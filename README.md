@@ -39,7 +39,7 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
 </td>
 <td width="50%">
 
-### ✅ After — AutoProdX
+### ✅ After — Automated Workflow
 
 - PLC/HMI **automatically captures** every unit
 - **Live dashboard** pushes data instantly
