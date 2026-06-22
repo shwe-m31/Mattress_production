@@ -76,9 +76,6 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
                   │  Count │ Type │ Size │ Time │
                   └────────────┬───────────────┘
                                │
-                    🗄️ Production Database
-                  (MySQL / PostgreSQL / MongoDB)
-                               │
                     🌐 React Web Dashboard
                                │
                  ┌─────────────┴──────────────┐
@@ -193,8 +190,6 @@ No manual intervention needed. Factory screens always show fresh data.
 |---|---|
 | **Frontend** | React.js · HTML5 · CSS3 · JavaScript |
 | **Visualization** | Chart.js / Recharts |
-| **Backend** | Springboot / Java |
-| **Database** | MySQL / PostgreSQL / MongoDB |
 | **Industrial I/O** | PLC · HMI · OPC UA · Modbus · MQTT |
 
 </div>
