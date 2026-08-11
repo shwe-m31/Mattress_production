@@ -21,6 +21,7 @@ function App() {
   const [refreshInterval, setRefreshInterval] = useState(60000);
   const [lastUpdate, setLastUpdate] = useState("--:--:--");
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const productionChartRef = useRef(null);
   const chartInstance = useRef(null);
@@ -68,10 +69,12 @@ function App() {
       };
 
       setData(transformed);
+      setError("");
       setLastUpdate(new Date().toLocaleTimeString());
       updateChart(transformed.hourlyData);
     } catch (err) {
       console.error("Error fetching production data:", err);
+      setError("Backend unavailable — showing the last received production data.");
     } finally {
       setIsLoading(false);
     }
@@ -254,6 +257,7 @@ function App() {
       <div className="last-update">
         Last updated: <span>{lastUpdate}</span>
         {isLoading && <span className="updating"> (Updating...)</span>}
+        {error && <span className="updating"> ({error})</span>}
       </div>
     </div>
   );
