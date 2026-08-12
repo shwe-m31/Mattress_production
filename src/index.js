@@ -23,6 +23,8 @@ styleSheet.textContent = `
   p { font-size: 1rem; color: #3e5b7d; margin-bottom: 2rem; line-height: 1.5; }
   .next-btn { background: linear-gradient(135deg, #bcd5fa, #8fbdf5); color: #ffffff; border: none; border-radius: 10px; padding: 14px 32px; font-weight: bold; cursor: pointer; transition: all 0.3s; font-size: 16px; box-shadow: 0 4px 15px rgba(110, 150, 210, 0.3); align-self: flex-start; }
   .next-btn:hover { background: linear-gradient(135deg, #8fbdf5, #bcd5fa); transform: scale(1.05); box-shadow: 0 6px 20px rgba(70, 110, 180, 0.4); }
+  .carousel-control-prev, .carousel-control-next { width: 8%; opacity: 1; }
+  .carousel-control-prev-icon, .carousel-control-next-icon { background-color: rgba(46, 75, 109, 0.72); border-radius: 50%; background-size: 55%; width: 42px; height: 42px; }
 
   /* ===== AuthPage Styles ===== */
   .auth-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #e8f1ff, #d2e2fb); padding: 20px; }
@@ -45,7 +47,7 @@ styleSheet.textContent = `
   .auth-input { width: 100%; padding: 16px 16px 16px 48px; border: 2px solid #e0e9fb; border-radius: 12px; font-size: 16px; transition: all 0.3s ease; background: #f7faff; }
   .auth-input:focus { outline: none; background: #ffffff; box-shadow: 0 0 0 3px rgba(160, 190, 240, 0.3); border-color: #a4c4f4; }
   .forgot-password { text-align: right; margin-bottom: 8px; }
-  .forgot-link { color: #7faee8; text-decoration: none; font-weight: 600; font-size: 14px; }
+  .forgot-link { color: #7faee8; text-decoration: none; font-weight: 600; font-size: 14px; background: none; border: none; padding: 0; cursor: pointer; }
   .submit-btn { background: linear-gradient(135deg, #a4c4f4, #7faee8); color: #ffffff; border: none; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; transition: 0.3s; box-shadow: 0 6px 18px rgba(110, 150, 210, 0.3); }
   .submit-btn:hover { transform: translateY(-2px); background: linear-gradient(135deg, #7faee8, #a4c4f4); box-shadow: 0 8px 24px rgba(70, 110, 180, 0.35); }
 `;
@@ -63,6 +65,7 @@ function IntroCarousel({ onFinish }) {
               <h1 className="brand">PEPS</h1>
               <h2>India’s Leading Spring Mattress Brand</h2>
               <p>Experience luxurious sleep crafted with precision and passion.<br/>Every PEPS mattress is built for your perfect rest.</p>
+              <button className="next-btn" type="button" data-bs-target="#introCarousel" data-bs-slide="next">Next</button>
             </div>
           </div>
         </div>
@@ -72,6 +75,7 @@ function IntroCarousel({ onFinish }) {
             <div className="right">
               <h1 className="brand">PEPS HYPNOS</h1>
               <h2>Where Comfort Meets Royalty</h2>
+              <button className="next-btn" type="button" data-bs-target="#introCarousel" data-bs-slide="next">Next</button>
               <p>Discover Hypnos by PEPS — designed with European technology to give you hotel-style comfort right at home.</p>
             </div>
           </div>
@@ -152,11 +156,10 @@ function AuthPage({ onFinish }) {
             )}
             {isLogin && (
               <div className="forgot-password">
-                <a href="#" className="forgot-link" onClick={(e) => {
-                  e.preventDefault();
+                <button type="button" className="forgot-link" onClick={() => {
                   const email = prompt("Enter your email to reset password:");
                   if (email) alert(`Password reset link sent to ${email}`);
-                }}>Forgot Password?</a>
+                }}>Forgot Password?</button>
               </div>
             )}
             <button type="submit" className="submit-btn">{isLogin ? "Sign In" : "Ready, Set, Go!"}</button>

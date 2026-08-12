@@ -4,7 +4,7 @@ This Spring Boot service supplies the existing React dashboard at `GET /api/dash
 
 ## Start
 
-1. Ensure MySQL is running. The service creates `peps_production_db` automatically when the configured user has permission. Alternatively, run `peps_production_db.sql` first.
+1. Ensure MySQL is running. The default configuration uses port `3307` for the local XAMPP MySQL installation. The service creates `peps_production_db` automatically when the configured user has permission. Alternatively, run `peps_production_db.sql` first.
 2. Configure credentials if MySQL requires them:
 
    ```powershell
