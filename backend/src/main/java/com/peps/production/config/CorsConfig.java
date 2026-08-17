@@ -14,7 +14,12 @@ public class CorsConfig {
         return new WebMvcConfigurer() {
             @Override public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/api/**")
-                    .allowedOrigins(frontendUrl, "http://localhost:3000", "http://127.0.0.1:3000")
+                    .allowedOriginPatterns(
+                        frontendUrl,
+                        "http://localhost:3000",
+                        "http://127.0.0.1:3000",
+                        "https://*.onrender.com"
+                    )
                     .allowedMethods("GET").allowedHeaders("*");
             }
         };
