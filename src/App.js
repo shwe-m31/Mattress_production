@@ -39,7 +39,8 @@ function App() {
     setIsLoading(true);
 
     try {
-      const res = await fetch("http://localhost:8080/api/dashboard");
+      const apiUrl = process.env.REACT_APP_API_URL || "http://localhost:8080/api/dashboard";
+      const res = await fetch(apiUrl);
       if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const json = await res.json();
 
