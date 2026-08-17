@@ -1,0 +1,37 @@
+services:
+  # 1. Backend Web Service running Spring Boot (Docker runtime)
+  - type: web
+    name: mattress-production-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: DB_URL
+        value: jdbc:mysql://mysql-2d367cc8-shwetham3101-project.a.aivencloud.com:15508/mattress_production?sslMode=REQUIRED
+      - key: DB_USERNAME
+        value: avnadmin
+      - key: DB_PASSWORD
+        sync: false
+      - key: FRONTEND_URL
+        value: https://mattress-production-frontend.onrender.com
+      # (Optional) To enable stricter SSL verification, uncomment the DB_CA_CERT block below, 
+      # paste your PEM certificate, and change the sslMode in DB_URL above to VERIFY_CA:
+      # - key: DB_CA_CERT
+      #   value: |
+      #     -----BEGIN CERTIFICATE-----
+      #     MIIERDCCAqygAwIBAgIUfLlskpLD5JsKN7OyLh7TGf5UGNwwDQYJKoZIhvcNAQEM
+      #     ...
+      #     -----END CERTIFICATE-----
+
+  # 2. Frontend Static Site serving the React app
+  - type: web
+    name: mattress-production-frontend
+    runtime: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
+    envVars:
+      - key: REACT_APP_API_URL
+        value: https://mattress-production-backend.onrender.com/api/dashboard
