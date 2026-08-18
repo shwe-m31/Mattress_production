@@ -134,6 +134,16 @@ function App() {
     return () => clearInterval(interval);
   }, [refreshInterval]);
 
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartInstance.current) {
+        chartInstance.current.resize();
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   return (
     <div className="dashboard">
       {/* Header */}
