@@ -15,7 +15,7 @@
 
 <div align="center">
 
-https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
+https://github.com/user-attachments/assets/e0aac817-3eab-4170-966d-eec9e5eec85a
 
 </div>
 
@@ -31,7 +31,6 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
 
 - Operators **manually count** each mattress
 - Data entered into an **LCD display** by hand
-- **Delayed updates** across the factory floor
 - **Human errors** distort production reports
 - Supervisors have **zero real-time visibility**
 - Operator time wasted on **non-production tasks**
@@ -41,7 +40,6 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
 
 ### ✅ After — Automated Workflow
 
-- PLC/HMI **automatically captures** every unit
 - **Live dashboard** pushes data instantly
 - **Zero manual entry** — zero reporting lag
 - Accurate, **error-free production stats**
@@ -65,11 +63,7 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
                │                                │
                └───────────────┬────────────────┘
                                │
-                        ⚙️  PLC / HMI
-                    (Industrial Controller)
-                               │
                     📡 Automatic Data Collection
-                     (OPC UA / Modbus / MQTT)
                                │
                     🧠 Processing Module
                   ┌────────────┴───────────────┐
@@ -78,9 +72,8 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
                                │
                     🌐 React Web Dashboard
                                │
-                 ┌─────────────┴──────────────┐
-          📺 Factory TV                💻 Supervisor PC
-           Display                       Dashboard
+                    💻 Supervisor PC
+                     Dashboard
 ```
 
 ---
@@ -95,7 +88,6 @@ https://github.com/user-attachments/assets/3de5c902-79e6-489f-9451-a2bc546bf7e7
 | 🔁 **Auto Refresh** | Configurable 15 min / 30 min / 1 hr intervals | ✅ Live |
 | 🔐 **Secure Login** | Email-protected supervisor access | ✅ Live |
 | 📺 **TV Display Mode** | Optimized for large factory floor screens | ✅ Live |
-| ⚙️ **PLC Integration** | Direct industrial controller data collection | 🔧 Prototype |
 
 ---
 
@@ -189,8 +181,8 @@ No manual intervention needed. Factory screens always show fresh data.
 | Layer | Technology |
 |---|---|
 | **Frontend** | React.js · HTML5 · CSS3 · JavaScript |
-| **Visualization** | Chart.js / Recharts |
-| **Industrial I/O** | PLC · HMI · OPC UA · Modbus · MQTT |
+| **Backend** | SpringBoot · Java · MySQL · Sping Data JPA |
+| **Visualization** | Chart.js |
 
 </div>
 
@@ -204,7 +196,6 @@ STEP 1 ── 🏭 Production Begins
           Each completed unit triggers a production event.
              │
 STEP 2 ── 📡 Automatic Data Collection
-          PLC / HMI sensors capture:
           [ Mattress Type ]  [ Size ]  [ Time ]  [ Quantity ]
              │
 STEP 3 ── 🧠 Data Processing
