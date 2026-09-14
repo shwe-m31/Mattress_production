@@ -1,19 +1,22 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable no-unused-vars */
 import React, { useEffect, useState, useRef } from "react";
 import "./App.css";
 import Chart from "chart.js/auto";
+import productionApi from "./services/productionApi";
 
 function App() {
   // State management
   const [activeTab, setActiveTab] = useState('dashboard');
   const [clock, setClock] = useState('--:-- -- | --- --, ----');
-  const [countdown] = useState('15:00');
+  const [countdown, setCountdown] = useState('15:00');
   const [intervalMins, setIntervalMins] = useState(15);
   const [lineSelect, setLineSelect] = useState('all');
   const [shiftSelect, setShiftSelect] = useState('current');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [tvMode, setTvMode] = useState(false);
   
-  // Data state
+  // Data state - all from backend
   const [kpiData, setKpiData] = useState({
     total: 0,
     spring: 0,
@@ -30,19 +33,12 @@ function App() {
   const [efficiencyMeters, setEfficiencyMeters] = useState([]);
   const [progressRings, setProgressRings] = useState([]);
   const [shiftTime, setShiftTime] = useState({ endTime: '--:--', remaining: '--' });
+  const [simulatorStatus, setSimulatorStatus] = useState(null);
   
   // Chart refs
   const hourlyChartRef = useRef(null);
   const chartsRef = useRef({});
   
-  // Utility functions
-  const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
-  const randF = (min, max) => +(Math.random() * (max - min) + min).toFixed(1);
-  
-  const SIZES = ['King', 'Queen', 'Double', 'Single'];
-  const VARIETIES_SPRING = ['Bonnell', 'Pocket', 'Offset', 'Continuous'];
-  const VARIETIES_HYPNOS = ['Comfort', 'Ortho', 'Pillow Top', 'Euro Top'];
-  // eslint-disable-next-line no-unused-vars
   const SIZE_COLORS = ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'];
   
   const TARGETS = {
@@ -56,155 +52,134 @@ function App() {
     cycleTime: 4.5
   };
   
-  // Generate hourly data
-  const generateHourlyData = () => {
+  // Update clock
+  const updateClock = () => {
     const now = new Date();
-    const hour = now.getHours();
-    let data = [];
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
     
-    for (let h = 6; h <= hour; h++) {
-      const spring = rand(55, 80);
-      const hypnos = rand(35, 55);
-      data.push({
-        hour: h,
-        spring: spring,
-        hypnos: hypnos,
-        total: spring + hypnos,
-        king: rand(10, 20),
-        queen: rand(20, 35),
-        double: rand(15, 25),
-        single: rand(5, 15),
-        efficiency: randF(82, 97)
+    let h = now.getHours();
+    const m = now.getMinutes();
+    const s = now.getSeconds();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    
+    setClock(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}  |  ${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`);
+  };
+  
+  // Initialize dashboard data from backend
+  const initDashboard = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch dashboard data from backend
+      const dashboardData = await productionApi.getDashboard();
+      
+      // Update KPI data
+      setKpiData({
+        total: dashboardData.totalProduction.toLocaleString(),
+        spring: dashboardData.springCount.toLocaleString(),
+        hypnos: dashboardData.hypnosCount.toLocaleString(),
+        targetPct: Math.round((dashboardData.totalProduction / TARGETS.shift) * 100) + '%',
+        targetSub: `${dashboardData.totalProduction} / ${TARGETS.shift} units`,
+        cycle: '4.2', // Would come from backend in real implementation
+        eff: dashboardData.efficiency + '%'
       });
+      
+      // Process size breakdown from backend data
+      const sizeData = Object.entries(dashboardData.sizeBreakdown || {}).map(([name, data]) => {
+        const total = (data.spring || 0) + (data.hypnos || 0);
+        const pct = total > 0 ? Math.round((data.spring + data.hypnos) / dashboardData.totalProduction * 100) : 0;
+        return {
+          name: name.charAt(0).toUpperCase() + name.slice(1),
+          val: total,
+          pct: pct,
+          color: SIZE_COLORS[['king', 'queen', 'double', 'single'].indexOf(name)]
+        };
+      });
+      setSizeBreakdown(sizeData);
+      
+      // Process recent production from backend
+      const recentData = (dashboardData.recentItems || []).map(item => ({
+        time: new Date(item.completionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: item.productType === 'SPRING' ? 'Spring' : 'Hypnos',
+        variety: item.variety || 'Standard',
+        size: item.size,
+        count: item.quantity || 1,
+        cycle: item.cycleTime || 0,
+        line: item.productionLine || 'Line 1',
+        status: item.status || 'COMPLETED'
+      }));
+      setHmiLog(recentData);
+      setProdLog(recentData);
+      
+      // Generate progress rings based on real data
+      const springPct = Math.min(100, Math.round((dashboardData.springCount / (TARGETS.shift * 0.6)) * 100));
+      const hypnosPct = Math.min(100, Math.round((dashboardData.hypnosCount / (TARGETS.shift * 0.4)) * 100));
+      const totalPct = Math.round((dashboardData.totalProduction / TARGETS.shift) * 100);
+      
+      setProgressRings([
+        { label: 'Spring', pct: springPct, color: '#2E7AAB' },
+        { label: 'Hypnos', pct: hypnosPct, color: '#1B4F6A' },
+        { label: 'Total', pct: totalPct, color: '#3E9AD0' }
+      ]);
+      
+      // Calculate shift time
+      const now = new Date();
+      const shiftEnd = new Date();
+      shiftEnd.setHours(22, 0, 0, 0);
+      const remain = Math.max(0, shiftEnd - now);
+      const rh = Math.floor(remain / 3600000);
+      const rm = Math.floor((remain % 3600000) / 60000);
+      setShiftTime({
+        endTime: '22:00',
+        remaining: `${rh}h ${rm}m`
+      });
+      
+      // Generate efficiency meters (simplified calculation from real data)
+      const effMetrics = [
+        { label: 'Availability', val: Math.min(100, dashboardData.efficiency + 5), color: '#2E7AAB' },
+        { label: 'Performance', val: Math.min(100, dashboardData.efficiency - 2), color: '#1B4F6A' },
+        { label: 'Quality', val: Math.min(100, dashboardData.efficiency + 8), color: '#3E9AD0' },
+        { label: 'OEE', val: dashboardData.efficiency, color: '#2A7D5B' }
+      ];
+      setEfficiencyMeters(effMetrics);
+      
+      // Create hourly chart from backend data
+      createHourlyChart(dashboardData.hourlyData);
+      
+    } catch (err) {
+      console.error('Error fetching dashboard data:', err);
+      setError('Failed to load production data. Backend may be unavailable.');
+    } finally {
+      setIsLoading(false);
     }
-    return data;
   };
   
-  // Generate HMI record
-  const generateHMIRecord = () => {
-    const type = Math.random() > 0.45 ? 'Spring' : 'Hypnos';
-    const size = SIZES[rand(0, 3)];
-    const variety = type === 'Spring' ? VARIETIES_SPRING[rand(0, 3)] : VARIETIES_HYPNOS[rand(0, 3)];
-    const count = rand(8, 24);
-    const cycle = randF(3.8, 5.6);
-    
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    
-    const statuses = ['Complete', 'Complete', 'Complete', 'In Progress', 'Delayed'];
-    const status = statuses[rand(0, 4)];
-    
-    return {
-      time: `${hh}:${mm}`,
-      type,
-      variety,
-      size,
-      count,
-      cycle,
-      status,
-      line: rand(1, 4)
-    };
-  };
-  
-  // Initialize dashboard data
-  const initDashboard = () => {
-    const hourlyData = generateHourlyData();
-    
-    // Calculate totals
-    const springTotal = hourlyData.reduce((sum, row) => sum + row.spring, 0);
-    const hypnosTotal = hourlyData.reduce((sum, row) => sum + row.hypnos, 0);
-    const total = springTotal + hypnosTotal;
-    const springShift = Math.round(springTotal * 0.6);
-    const hypnosShift = Math.round(hypnosTotal * 0.6);
-    const totalShift = springShift + hypnosShift;
-    const targetPct = Math.round(totalShift / TARGETS.shift * 100);
-    
-    // Update KPI data
-    setKpiData({
-      total: total.toLocaleString(),
-      spring: springTotal.toLocaleString(),
-      hypnos: hypnosTotal.toLocaleString(),
-      targetPct: targetPct + '%',
-      targetSub: `${totalShift} / ${TARGETS.shift} units`,
-      cycle: randF(4.1, 5.0),
-      eff: randF(85, 93) + '%'
-    });
-    
-    // Generate size breakdown
-    const sizes = { King: 0, Queen: 0, Double: 0, Single: 0 };
-    hourlyData.forEach(row => {
-      sizes.King += row.king;
-      sizes.Queen += row.queen;
-      sizes.Double += row.double;
-      sizes.Single += row.single;
-    });
-    
-    const sTotal = Object.values(sizes).reduce((a, b) => a + b, 0);
-    const sizeHTML = Object.entries(sizes).map(([name, val]) => {
-      const pct = Math.round(val / sTotal * 100);
-      return {
-        name,
-        val,
-        pct,
-        color: { King: '#2E7AAB', Queen: '#1B4F6A', Double: '#3E9AD0', Single: '#7ABCD5' }[name]
-      };
-    });
-    setSizeBreakdown(sizeHTML);
-    
-    // Initialize HMI log
-    const hmiRecords = Array.from({ length: 8 }, () => generateHMIRecord());
-    setHmiLog(hmiRecords);
-    
-    // Generate progress rings
-    const springPct = Math.round(springShift / (TARGETS.shift * 0.6) * 100);
-    const hypnosPct = Math.round(hypnosShift / (TARGETS.shift * 0.4) * 100);
-    setProgressRings([
-      { label: 'Spring', pct: springPct, color: '#2E7AAB' },
-      { label: 'Hypnos', pct: hypnosPct, color: '#1B4F6A' },
-      { label: 'Total', pct: targetPct, color: '#3E9AD0' }
-    ]);
-    
-    // Calculate shift time
-    const now = new Date();
-    const shiftEnd = new Date();
-    shiftEnd.setHours(22, 0, 0, 0);
-    const remain = Math.max(0, shiftEnd - now);
-    const rh = Math.floor(remain / 3600000);
-    const rm = Math.floor((remain % 3600000) / 60000);
-    setShiftTime({
-      endTime: '22:00',
-      remaining: `${rh}h ${rm}m`
-    });
-    
-    // Generate efficiency meters
-    const effMetrics = [
-      { label: 'Availability', val: randF(88, 96), color: '#2E7AAB' },
-      { label: 'Performance', val: randF(84, 94), color: '#1B4F6A' },
-      { label: 'Quality', val: randF(91, 99), color: '#3E9AD0' },
-      { label: 'OEE', val: randF(83, 92), color: '#2A7D5B' }
-    ];
-    setEfficiencyMeters(effMetrics);
-    
-    // Generate production log
-    const prodRecords = Array.from({ length: 10 }, () => generateHMIRecord());
-    setProdLog(prodRecords);
-    
-    // Create hourly chart
-    createHourlyChart(hourlyData);
-  };
-  
-  // Create hourly chart
+  // Create hourly chart from backend data
   const createHourlyChart = (hourlyData) => {
     const ctx = hourlyChartRef.current;
-    if (!ctx) return;
+    if (!ctx || !hourlyData) return;
     
     if (chartsRef.current.hourlyChart) {
       chartsRef.current.hourlyChart.destroy();
     }
     
-    const hours = hourlyData.map(r => r.hour + ':00');
-    const target = hourlyData.map(() => TARGETS.hourlyTotal);
+    // Process hourly data for chart
+    const hours = [];
+    const springData = [];
+    const hypnosData = [];
+    const targetData = [];
+    
+    const startHour = 6; // 6 AM
+    for (let i = 0; i < 24; i++) {
+      const hour = (startHour + i) % 24;
+      hours.push(`${hour}:00`);
+      springData.push(hourlyData.spring[i] || 0);
+      hypnosData.push(hourlyData.hypnos[i] || 0);
+      targetData.push(TARGETS.hourlyTotal);
+    }
     
     Chart.defaults.font.family = "'Lora', Georgia, serif";
     Chart.defaults.color = '#4A6A7D';
@@ -216,21 +191,21 @@ function App() {
         datasets: [
           {
             label: 'Spring',
-            data: hourlyData.map(r => r.spring),
+            data: springData,
             backgroundColor: 'rgba(46,122,171,0.7)',
             borderColor: '#2E7AAB',
             borderWidth: 1
           },
           {
             label: 'Hypnos',
-            data: hourlyData.map(r => r.hypnos),
+            data: hypnosData,
             backgroundColor: 'rgba(27,79,106,0.7)',
             borderColor: '#1B4F6A',
             borderWidth: 1
           },
           {
             label: 'Target',
-            data: target,
+            data: targetData,
             type: 'line',
             borderColor: '#C9952E',
             borderDash: [4, 4],
@@ -268,32 +243,39 @@ function App() {
     });
   };
   
-  // Update clock
-  const updateClock = () => {
-    const now = new Date();
-    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-    
-    let h = now.getHours();
-    const m = now.getMinutes();
-    const s = now.getSeconds();
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    h = h % 12 || 12;
-    
-    setClock(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}  |  ${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`);
+  // Simulate HMI push via backend
+  const simulateHMI = async () => {
+    try {
+      const newEvent = await productionApi.triggerSimulatorEvent();
+      
+      // Update HMI log with new event
+      const newRecord = {
+        time: new Date(newEvent.completionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        type: newEvent.productType === 'SPRING' ? 'Spring' : 'Hypnos',
+        variety: newEvent.variety || 'Standard',
+        size: newEvent.size,
+        count: newEvent.quantity,
+        cycle: newEvent.cycleTime || 0,
+        line: newEvent.productionLine || 'Line 1',
+        status: newEvent.status || 'COMPLETED'
+      };
+      
+      setHmiLog(prev => {
+        const updated = [...prev, newRecord];
+        if (updated.length > 20) updated.shift();
+        return updated;
+      });
+      
+      // Refresh dashboard to show updated data
+      initDashboard();
+      
+    } catch (err) {
+      console.error('Error simulating HMI event:', err);
+      setError('Failed to simulate HMI event');
+    }
   };
   
-  // Simulate HMI push
-  const simulateHMI = () => {
-    const newRecord = generateHMIRecord();
-    setHmiLog(prev => {
-      const updated = [...prev, newRecord];
-      if (updated.length > 20) updated.shift();
-      return updated;
-    });
-  };
-  
-  // Refresh data
+  // Refresh data from backend
   const refreshData = () => {
     initDashboard();
   };
@@ -302,7 +284,18 @@ function App() {
   const handleIntervalChange = (e) => {
     const mins = parseInt(e.target.value);
     setIntervalMins(mins);
-    // Reset countdown would go here
+    // Reset countdown display
+    setCountdown(`${mins}:00`);
+  };
+  
+  // Fetch simulator status
+  const fetchSimulatorStatus = async () => {
+    try {
+      const status = await productionApi.getSimulatorStatus();
+      setSimulatorStatus(status);
+    } catch (err) {
+      console.error('Error fetching simulator status:', err);
+    }
   };
   
   // Make ring SVG
@@ -329,10 +322,11 @@ function App() {
   };
   
   // Initialize on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     initDashboard();
     updateClock();
+    fetchSimulatorStatus();
+    
     const clockInterval = setInterval(updateClock, 1000);
     
     return () => clearInterval(clockInterval);
@@ -345,18 +339,24 @@ function App() {
   
   const getStatusClass = (status) => {
     switch (status) {
-      case 'Complete': return 'status-complete';
-      case 'Delayed': return 'status-delayed';
+      case 'COMPLETED': case 'Completed': return 'status-complete';
+      case 'DELAYED': case 'Delayed': return 'status-delayed';
+      case 'IN_PROGRESS': case 'In Progress': return 'status-progress';
       default: return 'status-progress';
     }
   };
   
   const getBadgeClass = (type) => {
-    return type === 'Spring' ? 'badge-spring' : 'badge-hypnos';
+    return type === 'Spring' || type === 'SPRING' ? 'badge-spring' : 'badge-hypnos';
+  };
+  
+  // Toggle TV mode
+  const toggleTvMode = () => {
+    setTvMode(!tvMode);
   };
   
   return (
-    <div>
+    <div className={tvMode ? 'tv-mode' : ''}>
       {/* HEADER */}
       <header className="header">
         <div className="header-left">
@@ -373,7 +373,7 @@ function App() {
       </header>
 
       {/* NAV */}
-      <nav className="nav">
+      <nav className="nav" style={{ display: tvMode ? 'none' : 'flex' }}>
         <button className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => handleTabChange('dashboard')}>Dashboard</button>
         <button className={`nav-tab ${activeTab === 'hourly' ? 'active' : ''}`} onClick={() => handleTabChange('hourly')}>Hourly</button>
         <button className={`nav-tab ${activeTab === 'daily' ? 'active' : ''}`} onClick={() => handleTabChange('daily')}>Daily</button>
@@ -384,7 +384,7 @@ function App() {
       </nav>
 
       {/* CONTROLS BAR */}
-      <div className="controls-bar">
+      <div className="controls-bar" style={{ display: tvMode ? 'none' : 'flex' }}>
         <div className="control-group">
           <span className="control-label">Update Interval</span>
           <select className="control-select" value={intervalMins} onChange={handleIntervalChange}>
@@ -411,217 +411,302 @@ function App() {
             <option value="C">Shift C (22:00 – 06:00)</option>
           </select>
         </div>
-        <button className="control-btn secondary" onClick={refreshData}>Refresh Now</button>
+        <button className="control-btn secondary" onClick={refreshData} disabled={isLoading}>
+          {isLoading ? 'Refreshing...' : 'Refresh Now'}
+        </button>
         <button className="control-btn" onClick={simulateHMI}>Simulate HMI Push</button>
         <div className="next-update">Next auto-update in <span>{countdown}</span></div>
       </div>
 
+      {/* ERROR STATE */}
+      {error && (
+        <div style={{ padding: '2rem', textAlign: 'center', color: '#B03A2E' }}>
+          <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>⚠️ {error}</div>
+          <button className="control-btn" onClick={refreshData} style={{ marginTop: '1rem' }}>Retry</button>
+        </div>
+      )}
+
+      {/* LOADING STATE */}
+      {isLoading && !error && (
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
+          Loading production data...
+        </div>
+      )}
+
       {/* DASHBOARD TAB */}
-      <div className={`main ${activeTab === 'dashboard' ? 'active' : ''}`} id="tab-dashboard">
-        {/* KPI STRIP */}
-        <div className="kpi-strip">
-          <div className="kpi-card spring-accent">
-            <div className="kpi-label">Total Produced Today</div>
-            <div className="kpi-value">{kpiData.total}</div>
-            <div className="kpi-sub">units across all lines</div>
-            <div className="kpi-delta up">+{rand(3, 8)}% vs yesterday</div>
-          </div>
-          <div className="kpi-card spring-accent">
-            <div className="kpi-label">Spring Mattresses</div>
-            <div className="kpi-value">{kpiData.spring}</div>
-            <div className="kpi-sub">units today</div>
-            <div className="kpi-delta up">+{rand(2, 6)}% vs yesterday</div>
-          </div>
-          <div className="kpi-card hypnos-accent">
-            <div className="kpi-label">Hypnos Mattresses</div>
-            <div className="kpi-value">{kpiData.hypnos}</div>
-            <div className="kpi-sub">units today</div>
-            <div className="kpi-delta up">+{rand(1, 5)}% vs yesterday</div>
-          </div>
-          <div className="kpi-card success-accent">
-            <div className="kpi-label">Shift Target</div>
-            <div className="kpi-value">{kpiData.targetPct}</div>
-            <div className="kpi-sub">{kpiData.targetSub}</div>
-            <div className="kpi-delta neutral">Current Shift</div>
-          </div>
-          <div className="kpi-card warn-accent">
-            <div className="kpi-label">Avg Cycle Time</div>
-            <div className="kpi-value">{kpiData.cycle}</div>
-            <div className="kpi-sub">minutes per unit</div>
-            <div className="kpi-delta neutral">Target: 4.5 min</div>
-          </div>
-          <div className="kpi-card">
-            <div className="kpi-label">Line Efficiency</div>
-            <div className="kpi-value">{kpiData.eff}</div>
-            <div className="kpi-sub">OEE this shift</div>
-            <div className="kpi-delta up">+{randF(0.5, 2.5)}% vs last shift</div>
-          </div>
-        </div>
-
-        {/* ROW 1: Hourly Trend + Size Breakdown */}
-        <div className="grid-2-1">
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">Hourly Production — Today</div>
-                <div className="card-subtitle">Spring vs Hypnos, units per hour</div>
-              </div>
-              <span className="badge badge-success">Live</span>
+      {!isLoading && !error && (
+        <div className={`main ${activeTab === 'dashboard' ? 'active' : ''}`} id="tab-dashboard">
+          {/* KPI STRIP */}
+          <div className="kpi-strip">
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">Total Produced Today</div>
+              <div className="kpi-value">{kpiData.total}</div>
+              <div className="kpi-sub">units across all lines</div>
+              <div className="kpi-delta up">Live from Backend</div>
             </div>
-            <div className="card-body">
-              <div className="chart-wrap" style={{height: '200px'}}>
-                <canvas ref={hourlyChartRef}></canvas>
-              </div>
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">Spring Mattresses</div>
+              <div className="kpi-value">{kpiData.spring}</div>
+              <div className="kpi-sub">units today</div>
+              <div className="kpi-delta up">Live from Backend</div>
+            </div>
+            <div className="kpi-card hypnos-accent">
+              <div className="kpi-label">Hypnos Mattresses</div>
+              <div className="kpi-value">{kpiData.hypnos}</div>
+              <div className="kpi-sub">units today</div>
+              <div className="kpi-delta up">Live from Backend</div>
+            </div>
+            <div className="kpi-card success-accent">
+              <div className="kpi-label">Shift Target</div>
+              <div className="kpi-value">{kpiData.targetPct}</div>
+              <div className="kpi-sub">{kpiData.targetSub}</div>
+              <div className="kpi-delta neutral">Current Shift</div>
+            </div>
+            <div className="kpi-card warn-accent">
+              <div className="kpi-label">Avg Cycle Time</div>
+              <div className="kpi-value">{kpiData.cycle}</div>
+              <div className="kpi-sub">minutes per unit</div>
+              <div className="kpi-delta neutral">Target: 4.5 min</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Line Efficiency</div>
+              <div className="kpi-value">{kpiData.eff}</div>
+              <div className="kpi-sub">OEE this shift</div>
+              <div className="kpi-delta up">Live from Backend</div>
             </div>
           </div>
 
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">Size Distribution</div>
-                <div className="card-subtitle">Today's production</div>
-              </div>
-            </div>
-            <div className="card-body">
-              {sizeBreakdown.map((item, idx) => (
-                <div className="size-row" key={idx}>
-                  <div className="size-name">{item.name}</div>
-                  <div className="size-bar-wrap">
-                    <div className="size-bar" style={{width: item.pct + '%', background: item.color}}></div>
-                  </div>
-                  <div className="size-count">{item.val}</div>
-                  <div className="size-pct">{item.pct}%</div>
+          {/* ROW 1: Hourly Trend + Size Breakdown */}
+          <div className="grid-2-1">
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Hourly Production — Today</div>
+                  <div className="card-subtitle">Spring vs Hypnos, units per hour</div>
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* ROW 2: HMI Feed + Target Progress + Efficiency */}
-        <div className="grid-3">
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">HMI / PLC Live Feed</div>
-                <div className="card-subtitle">Incoming production records</div>
+                <span className="badge badge-success">Live</span>
               </div>
-              <span className="badge badge-spring">Auto</span>
+              <div className="card-body">
+                <div className="chart-wrap" style={{height: '200px'}}>
+                  <canvas ref={hourlyChartRef}></canvas>
+                </div>
+              </div>
             </div>
-            <div className="card-body" style={{padding: '0.75rem 1rem'}}>
-              <div className="hmi-feed">
-                {hmiLog.slice(-10).reverse().map((row, idx) => (
-                  <div className="hmi-row" key={idx}>
-                    <div className="hmi-time">{row.time}</div>
-                    <div className="hmi-type">
-                      <span className={`badge ${getBadgeClass(row.type)}`} style={{fontSize: '0.62rem'}}>{row.type}</span>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Size Distribution</div>
+                  <div className="card-subtitle">Today's production</div>
+                </div>
+              </div>
+              <div className="card-body">
+                {sizeBreakdown.length > 0 ? sizeBreakdown.map((item, idx) => (
+                  <div className="size-row" key={idx}>
+                    <div className="size-name">{item.name}</div>
+                    <div className="size-bar-wrap">
+                      <div className="size-bar" style={{width: item.pct + '%', background: item.color}}></div>
                     </div>
-                    <div className="hmi-size">{row.size} / {row.variety}</div>
-                    <div className="hmi-count">{row.count}</div>
-                    <div className="hmi-status">
-                      <span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span>
-                    </div>
+                    <div className="size-count">{item.val}</div>
+                    <div className="size-pct">{item.pct}%</div>
                   </div>
-                ))}
+                )) : <div style={{textAlign: 'center', color: 'var(--text-muted)'}}>No size data available</div>}
               </div>
             </div>
           </div>
 
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">Shift Progress</div>
-                <div className="card-subtitle">Target attainment by line</div>
+          {/* ROW 2: HMI Feed + Target Progress + Efficiency */}
+          <div className="grid-3">
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">HMI / PLC Live Feed</div>
+                  <div className="card-subtitle">Incoming production records</div>
+                </div>
+                <span className="badge badge-spring">Simulated</span>
               </div>
-            </div>
-            <div className="card-body">
-              <div className="ring-wrap">
-                {progressRings.map((ring, idx) => makeRing(ring.label, ring.pct, ring.color))}
-              </div>
-              <div style={{marginTop: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', textAlign: 'center'}}>
-                Shift ends at <strong>{shiftTime.endTime}</strong> &nbsp;&middot;&nbsp; <span>{shiftTime.remaining}</span> remaining
-              </div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="card-header">
-              <div>
-                <div className="card-title">Line Efficiency</div>
-                <div className="card-subtitle">OEE components this shift</div>
-              </div>
-            </div>
-            <div className="card-body">
-              <div className="eff-meter">
-                {efficiencyMeters.map((eff, idx) => (
-                  <div className="eff-row" key={idx}>
-                    <div className="eff-label">{eff.label}</div>
-                    <div className="eff-bar-wrap">
-                      <div className="eff-bar" style={{width: eff.val + '%', background: eff.color}}></div>
+              <div className="card-body" style={{padding: '0.75rem 1rem'}}>
+                <div className="hmi-feed">
+                  {hmiLog.length > 0 ? hmiLog.slice(-10).reverse().map((row, idx) => (
+                    <div className="hmi-row" key={idx}>
+                      <div className="hmi-time">{row.time}</div>
+                      <div className="hmi-type">
+                        <span className={`badge ${getBadgeClass(row.type)}`} style={{fontSize: '0.62rem'}}>{row.type}</span>
+                      </div>
+                      <div className="hmi-size">{row.size} / {row.variety}</div>
+                      <div className="hmi-count">{row.count}</div>
+                      <div className="hmi-status">
+                        <span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span>
+                      </div>
                     </div>
-                    <div className="eff-val" style={{color: eff.color}}>{eff.val}%</div>
-                  </div>
-                ))}
+                  )) : <div style={{textAlign: 'center', color: 'var(--text-muted)', padding: '1rem'}}>No production records yet</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Shift Progress</div>
+                  <div className="card-subtitle">Target attainment by line</div>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="ring-wrap">
+                  {progressRings.map((ring, idx) => makeRing(ring.label, ring.pct, ring.color))}
+                </div>
+                <div style={{marginTop: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', textAlign: 'center'}}>
+                  Shift ends at <strong>{shiftTime.endTime}</strong> &nbsp;&middot;&nbsp; <span>{shiftTime.remaining}</span> remaining
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Line Efficiency</div>
+                  <div className="card-subtitle">OEE components this shift</div>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="eff-meter">
+                  {efficiencyMeters.map((eff, idx) => (
+                    <div className="eff-row" key={idx}>
+                      <div className="eff-label">{eff.label}</div>
+                      <div className="eff-bar-wrap">
+                        <div className="eff-bar" style={{width: eff.val + '%', background: eff.color}}></div>
+                      </div>
+                      <div className="eff-val" style={{color: eff.color}}>{eff.val}%</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ROW 3: Recent Completion Log */}
-        <div className="card" style={{marginBottom: '1rem'}}>
-          <div className="card-header">
-            <div>
-              <div className="card-title">Recent Production Log</div>
-              <div className="card-subtitle">Last 10 completed batches from HMI</div>
+          {/* ROW 3: Recent Completion Log */}
+          <div className="card" style={{marginBottom: '1rem'}}>
+            <div className="card-header">
+              <div>
+                <div className="card-title">Recent Production Log</div>
+                <div className="card-subtitle">Last 10 completed batches from HMI</div>
+              </div>
+              <span className="badge badge-hypnos">Simulated Source</span>
             </div>
-            <span className="badge badge-hypnos">PLC Source</span>
-          </div>
-          <div className="card-body" style={{padding: 0}}>
-            <table className="prod-table">
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Product Type</th>
-                  <th>Variety</th>
-                  <th>Size</th>
-                  <th>Count</th>
-                  <th>Cycle (min)</th>
-                  <th>Line</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {prodLog.map((row, idx) => (
-                  <tr key={idx}>
-                    <td>{row.time}</td>
-                    <td><span className={`badge ${getBadgeClass(row.type)}`}>{row.type}</span></td>
-                    <td>{row.variety}</td>
-                    <td>{row.size}</td>
-                    <td className="num">{row.count}</td>
-                    <td>{row.cycle}</td>
-                    <td>Line {row.line}</td>
-                    <td><span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span></td>
+            <div className="card-body" style={{padding: 0}}>
+              <table className="prod-table">
+                <thead>
+                  <tr>
+                    <th>Time</th>
+                    <th>Product Type</th>
+                    <th>Variety</th>
+                    <th>Size</th>
+                    <th>Count</th>
+                    <th>Cycle (min)</th>
+                    <th>Line</th>
+                    <th>Status</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {prodLog.length > 0 ? prodLog.map((row, idx) => (
+                    <tr key={idx}>
+                      <td>{row.time}</td>
+                      <td><span className={`badge ${getBadgeClass(row.type)}`}>{row.type}</span></td>
+                      <td>{row.variety}</td>
+                      <td>{row.size}</td>
+                      <td className="num">{row.count}</td>
+                      <td>{row.cycle.toFixed(1)}</td>
+                      <td>{row.line}</td>
+                      <td><span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span></td>
+                    </tr>
+                  )) : <tr><td colSpan="8" style={{textAlign: 'center', color: 'var(--text-muted)'}}>No production records yet</td></tr>}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* OTHER TABS (Placeholder for now) */}
+      {/* OTHER TABS */}
       {['hourly', 'daily', 'weekly', 'monthly', 'crm', 'settings'].map(tab => (
         <div key={tab} className={`main ${activeTab === tab ? 'active' : ''}`} id={`tab-${tab}`}>
           <div className="card">
             <div className="card-body">
-              <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>
-                {tab.charAt(0).toUpperCase() + tab.slice(1)} Tab - Coming Soon
-              </div>
+              {tab === 'settings' ? (
+                <div className="settings-panel">
+                  <div className="settings-section">
+                    <div className="settings-title">Simulator Controls</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Simulator Status</div>
+                        <div className="settings-row-desc">
+                          {simulatorStatus ? `${simulatorStatus.status} - ${simulatorStatus.eventsGenerated} events generated` : 'Loading...'}
+                        </div>
+                      </div>
+                      <span className={`badge ${simulatorStatus?.active ? 'badge-success' : 'badge-warn'}`}>
+                        {simulatorStatus?.active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">TV Display Mode</div>
+                        <div className="settings-row-desc">Full-screen kiosk optimised layout</div>
+                      </div>
+                      <div className="toggle-wrap" onClick={toggleTvMode}>
+                        <div className={`toggle ${tvMode ? 'on' : ''}`}></div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="settings-section">
+                    <div className="settings-title">Data Source — HMI / PLC</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Connection Status</div>
+                      </div>
+                      <span className="badge badge-success">Connected — Simulated</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Data Source</div>
+                      </div>
+                      <span className="badge badge-spring">HMI/PLC Simulator</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Endpoint</div>
+                        <div className="settings-row-desc">OPC-UA or Modbus TCP address of the HMI controller</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>HMI/PLC Simulator</span>
+                    </div>
+                  </div>
+                  
+                  <div className="settings-section">
+                    <div className="settings-title">Display Preferences</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Refresh Interval</div>
+                        <div className="settings-row-desc">Current auto-refresh setting</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>{intervalMins} minutes</span>
+                    </div>
+                  </div>
+                </div>
+              ) : tab === 'crm' ? (
+                <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>
+                  CRM Metrics — Not Available / Future Module
+                </div>
+              ) : (
+                <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>
+                  {tab.charAt(0).toUpperCase() + tab.slice(1)} Tab — Coming Soon
+                </div>
+              )}
             </div>
           </div>
         </div>
       ))}
 
-      <footer className="footer">
+      <footer className="footer" style={{ display: tvMode ? 'none' : 'block' }}>
         Peps Mattress Automated Production Display System &nbsp;&middot;&nbsp; HMI/PLC Integration Layer &nbsp;&middot;&nbsp; Data refreshes per configured interval
       </footer>
     </div>

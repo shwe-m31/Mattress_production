@@ -43,7 +43,28 @@ public class ProductionSimulatorService implements CommandLineRunner {
     private ProductionData newEvent(LocalDateTime time) {
         ThreadLocalRandom random = ThreadLocalRandom.current();
         ProductType type = random.nextInt(100) < 58 ? ProductType.SPRING : ProductType.HYPNOS;
+        
+        String[] springVarieties = {"Bonnell", "Pocket", "Offset", "Continuous"};
+        String[] hypnosVarieties = {"Comfort", "Ortho", "Pillow Top", "Euro Top"};
+        String[] lines = {"SPRING-01", "SPRING-02", "HYPNOS-01", "HYPNOS-02"};
+        String[] statuses = {"COMPLETED", "COMPLETED", "COMPLETED", "IN_PROGRESS", "DELAYED"};
+        
+        String variety = type == ProductType.SPRING ? 
+            springVarieties[random.nextInt(springVarieties.length)] : 
+            hypnosVarieties[random.nextInt(hypnosVarieties.length)];
+        
         MattressSize[] sizes = MattressSize.values();
-        return new ProductionData(type, sizes[random.nextInt(sizes.length)], 1, time);
+        int quantity = random.nextInt(1, 3); // 1-2 units per event for historical data
+        
+        // Use the simpler constructor and set additional fields
+        ProductionData event = new ProductionData(type, sizes[random.nextInt(sizes.length)], quantity, time);
+        event.setVariety(variety);
+        event.setProductionLine(lines[random.nextInt(lines.length)]);
+        event.setStartTime(time.minusMinutes(random.nextInt(3, 6)));
+        event.setCycleTime(random.nextDouble(3.5, 5.5));
+        event.setStatus(ProductionStatus.valueOf(statuses[random.nextInt(statuses.length)]));
+        event.setProductionTime(time);
+        
+        return event;
     }
 }

@@ -28,8 +28,8 @@ public class DashboardService {
             if (isSpring) spring += quantity; else hypnos += quantity;
             SizeBreakdown size = breakdown.get(item.getSize().name().toLowerCase());
             if (isSpring) size.addSpring(quantity); else size.addHypnos(quantity);
-            int hourIndex = item.getCompletionTime().getHour() - 9;
-            if (hourIndex >= 0 && hourIndex < 12) {
+            int hourIndex = item.getCompletionTime().getHour();
+            if (hourIndex >= 0 && hourIndex < 24) {
                 if (isSpring) hourly.getSpring()[hourIndex] += quantity; else hourly.getHypnos()[hourIndex] += quantity;
             }
         }
@@ -39,7 +39,16 @@ public class DashboardService {
         response.setEfficiency(Math.max(80, Math.min(99, 85 + Math.round(progress * 0.12f))));
         response.setSizeBreakdown(breakdown); response.setHourlyData(hourly);
         response.setRecentItems(repository.findTop10ByStatusOrderByCompletionTimeDesc(ProductionStatus.COMPLETED).stream()
-            .map(item -> new RecentProduction(item.getProductType().name(), item.getSize().name(), item.getCompletionTime())).toList());
+            .map(item -> new RecentProduction(
+                item.getProductType().name(),
+                item.getVariety() != null ? item.getVariety() : "Standard",
+                item.getSize().name(),
+                item.getCompletionTime(),
+                item.getQuantity(),
+                item.getCycleTime() != null ? item.getCycleTime() : 0.0,
+                item.getProductionLine() != null ? item.getProductionLine() : "Line 1",
+                item.getStatus().name()
+            )).toList());
         return response;
     }
 }

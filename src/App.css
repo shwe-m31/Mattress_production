@@ -683,3 +683,39 @@ canvas {
   z-index: 999;
   pointer-events: none;
 }
+
+/* TV Display Mode */
+.tv-mode .nav,
+.tv-mode .controls-bar,
+.tv-mode .footer {
+  display: none !important;
+}
+
+.tv-mode .main {
+  padding: 1rem 2rem 2rem;
+}
+
+.tv-mode .kpi-strip {
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1.5rem;
+}
+
+.tv-mode .kpi-card {
+  padding: 1.5rem 1.8rem;
+}
+
+.tv-mode .kpi-value {
+  font-size: 2.5rem;
+}
+
+.tv-mode .chart-wrap {
+  height: 280px !important;
+}
+
+.tv-mode .card-body {
+  padding: 1.5rem;
+}
+
+.tv-mode .hmi-feed {
+  max-height: 300px;
+}
