@@ -1,0 +1,2412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Peps Mattress — Production Display System</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lora:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #DDEEF8;
+    --bg-deep: #C8E0F0;
+    --container: #FFFFFF;
+    --container-alt: #F2F9FE;
+    --border: #B8D8EE;
+    --text-primary: #1A2E3B;
+    --text-secondary: #4A6A7D;
+    --text-muted: #7A9DB5;
+    --accent-spring: #2E7AAB;
+    --accent-hypnos: #1B4F6A;
+    --accent-line: #3E9AD0;
+    --success: #2A7D5B;
+    --warn: #7A6020;
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-body: 'Lora', Georgia, serif;
+    --radius: 8px;
+    --shadow: 0 2px 12px rgba(30,70,100,0.08);
+    --shadow-lg: 0 6px 32px rgba(30,70,100,0.12);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    font-family: var(--font-body);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  .header {
+    background: var(--container);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 64px;
+    box-shadow: var(--shadow);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: baseline;
+    gap: 1rem;
+  }
+
+  .brand {
+    font-family: var(--font-display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--accent-hypnos);
+    letter-spacing: 0.01em;
+  }
+
+  .brand-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .live-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--success);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .live-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.35; }
+  }
+
+  .clock {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    min-width: 160px;
+    text-align: right;
+  }
+
+  /* NAV TABS */
+  .nav {
+    background: var(--container);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    gap: 0;
+  }
+
+  .nav-tab {
+    padding: 0.85rem 1.5rem;
+    font-family: var(--font-body);
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: color 0.2s, border-color 0.2s;
+    letter-spacing: 0.02em;
+    background: none;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+  }
+
+  .nav-tab:hover { color: var(--accent-spring); }
+  .nav-tab.active { color: var(--accent-hypnos); border-bottom-color: var(--accent-spring); font-weight: 600; }
+
+  /* CONTROLS BAR */
+  .controls-bar {
+    background: var(--container-alt);
+    border-bottom: 1px solid var(--border);
+    padding: 0.7rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .control-group {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .control-label {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.03em;
+    white-space: nowrap;
+  }
+
+  .control-select, .control-btn {
+    font-family: var(--font-body);
+    font-size: 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.3rem 0.7rem;
+    background: var(--container);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+  }
+
+  .control-select:focus, .control-btn:focus { outline: 2px solid var(--accent-spring); outline-offset: 1px; }
+
+  .control-btn {
+    background: var(--accent-spring);
+    color: white;
+    border-color: var(--accent-spring);
+    font-weight: 600;
+    padding: 0.3rem 1rem;
+  }
+
+  .control-btn:hover { background: var(--accent-hypnos); border-color: var(--accent-hypnos); }
+
+  .control-btn.secondary {
+    background: var(--container);
+    color: var(--accent-spring);
+    border-color: var(--accent-spring);
+  }
+
+  .control-btn.secondary:hover { background: var(--bg-deep); }
+
+  .next-update {
+    margin-left: auto;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+  }
+
+  .next-update span { color: var(--accent-spring); font-weight: 600; }
+
+  /* MAIN LAYOUT */
+  .main {
+    padding: 1.5rem 2rem 2rem;
+    display: none;
+  }
+
+  .main.active { display: block; }
+
+  /* KPI STRIP */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .kpi-card {
+    background: var(--container);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.2rem;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--accent-line);
+  }
+
+  .kpi-card.spring-accent { border-top-color: var(--accent-spring); }
+  .kpi-card.hypnos-accent { border-top-color: var(--accent-hypnos); }
+  .kpi-card.success-accent { border-top-color: var(--success); }
+  .kpi-card.warn-accent { border-top-color: #C9952E; }
+
+  .kpi-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.4rem;
+    text-transform: uppercase;
+  }
+
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 1.9rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+  }
+
+  .kpi-sub {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
+  .kpi-delta {
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-top: 0.25rem;
+  }
+
+  .kpi-delta.up { color: var(--success); }
+  .kpi-delta.down { color: #B03A2E; }
+  .kpi-delta.neutral { color: var(--text-muted); }
+
+  /* GRID LAYOUTS */
+  .grid-2-1 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .grid-1-1 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  /* CARDS */
+  .card {
+    background: var(--container);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .card-header {
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-family: var(--font-display);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 0.01em;
+  }
+
+  .card-subtitle {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 0.15rem;
+  }
+
+  .card-body { padding: 1.25rem; }
+
+  .badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    padding: 0.2rem 0.6rem;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .badge-spring { background: #E8F3FA; color: var(--accent-spring); }
+  .badge-hypnos { background: #E0ECF4; color: var(--accent-hypnos); }
+  .badge-success { background: #E4F5EE; color: var(--success); }
+  .badge-warn { background: #FBF4E5; color: #7A6020; }
+
+  /* CHART CANVAS */
+  .chart-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  canvas {
+    display: block;
+    width: 100% !important;
+  }
+
+  /* PRODUCTION TABLE */
+  .prod-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+
+  .prod-table th {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--container-alt);
+  }
+
+  .prod-table td {
+    padding: 0.6rem 0.75rem;
+    border-bottom: 1px solid #EEF5FA;
+    color: var(--text-primary);
+    font-size: 0.82rem;
+  }
+
+  .prod-table tr:last-child td { border-bottom: none; }
+  .prod-table tr:hover td { background: var(--container-alt); }
+
+  .prod-table .num {
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 0.88rem;
+  }
+
+  /* STATUS PILL */
+  .status-pill {
+    display: inline-block;
+    padding: 0.18rem 0.55rem;
+    border-radius: 12px;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+  }
+
+  .status-complete { background: #E4F5EE; color: var(--success); }
+  .status-progress { background: #E8F3FA; color: var(--accent-spring); }
+  .status-delayed { background: #FDE8E8; color: #B03A2E; }
+
+  /* SIZE BREAKDOWN */
+  .size-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px solid #EEF5FA;
+  }
+
+  .size-row:last-child { border-bottom: none; }
+
+  .size-name {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    width: 80px;
+    flex-shrink: 0;
+  }
+
+  .size-bar-wrap {
+    flex: 1;
+    background: var(--bg-deep);
+    border-radius: 3px;
+    height: 6px;
+    overflow: hidden;
+  }
+
+  .size-bar {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.8s ease;
+  }
+
+  .size-count {
+    font-family: var(--font-display);
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    width: 36px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  .size-pct {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    width: 32px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* HMI FEED */
+  .hmi-feed {
+    max-height: 220px;
+    overflow-y: auto;
+  }
+
+  .hmi-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #EEF5FA;
+    font-size: 0.78rem;
+  }
+
+  .hmi-row:last-child { border-bottom: none; }
+
+  .hmi-time {
+    color: var(--text-muted);
+    font-weight: 500;
+    flex-shrink: 0;
+    width: 52px;
+    font-size: 0.72rem;
+  }
+
+  .hmi-type {
+    width: 60px;
+    flex-shrink: 0;
+  }
+
+  .hmi-size { width: 80px; flex-shrink: 0; color: var(--text-secondary); }
+  .hmi-count { font-family: var(--font-display); font-weight: 600; font-size: 0.9rem; }
+  .hmi-status { margin-left: auto; }
+
+  /* PROGRESS RING */
+  .ring-wrap {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 2rem;
+    padding: 0.5rem 0;
+  }
+
+  .ring-item { text-align: center; }
+
+  .ring-svg { display: block; margin: 0 auto 0.5rem; }
+
+  .ring-label {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .ring-value {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+
+  /* EFFICIENCY METER */
+  .eff-meter {
+    margin: 0.5rem 0;
+  }
+
+  .eff-row {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.7rem;
+  }
+
+  .eff-label { font-size: 0.78rem; color: var(--text-secondary); width: 90px; flex-shrink: 0; }
+
+  .eff-bar-wrap {
+    flex: 1;
+    background: var(--bg-deep);
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+  }
+
+  .eff-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.9s ease;
+  }
+
+  .eff-val {
+    font-family: var(--font-display);
+    font-size: 0.85rem;
+    font-weight: 600;
+    width: 38px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* SCROLLBAR */
+  .hmi-feed::-webkit-scrollbar { width: 4px; }
+  .hmi-feed::-webkit-scrollbar-track { background: var(--container-alt); }
+  .hmi-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* SHIFT INDICATOR */
+  .shift-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .shift-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+    background: var(--container-alt);
+    color: var(--text-muted);
+    font-family: var(--font-body);
+    transition: all 0.2s;
+  }
+
+  .shift-btn.active {
+    background: var(--accent-spring);
+    color: white;
+    border-color: var(--accent-spring);
+    font-weight: 600;
+  }
+
+  /* SETTINGS PANEL */
+  .settings-panel { padding: 1.5rem 2rem; max-width: 700px; }
+
+  .settings-section { margin-bottom: 2rem; }
+
+  .settings-title {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid #EEF5FA;
+  }
+
+  .settings-row:last-child { border-bottom: none; }
+
+  .settings-row-label { font-size: 0.85rem; color: var(--text-secondary); }
+  .settings-row-desc { font-size: 0.72rem; color: var(--text-muted); margin-top: 0.1rem; }
+
+  .toggle-wrap {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    cursor: pointer;
+  }
+
+  .toggle {
+    width: 38px;
+    height: 20px;
+    background: var(--bg-deep);
+    border-radius: 10px;
+    position: relative;
+    transition: background 0.2s;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  .toggle.on { background: var(--accent-spring); border-color: var(--accent-spring); }
+
+  .toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+
+  .toggle.on::after { transform: translateX(18px); }
+
+  /* FOOTER */
+  .footer {
+    text-align: center;
+    padding: 1rem 2rem;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border);
+    background: var(--container);
+    margin-top: 1rem;
+  }
+
+  /* Responsive */
+  @media (max-width: 1100px) {
+    .kpi-strip { grid-template-columns: repeat(3, 1fr); }
+    .grid-2-1 { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 700px) {
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .grid-1-1, .grid-3 { grid-template-columns: 1fr; }
+    .header-right { gap: 0.75rem; }
+    .brand-sub { display: none; }
+    .main { padding: 1rem; }
+    .controls-bar { gap: 0.75rem; }
+  }
+
+  /* Tooltip */
+  [data-tip] { position: relative; cursor: default; }
+  [data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text-primary);
+    color: white;
+    padding: 0.25rem 0.6rem;
+    border-radius: 4px;
+    font-size: 0.68rem;
+    white-space: nowrap;
+    z-index: 999;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <div class="brand">Peps Mattress</div>
+    <div class="brand-sub">Production Display System</div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      Live Feed
+    </div>
+    <div class="clock" id="clock">--:-- -- | --- --, ----</div>
+  </div>
+</header>
+
+<!-- NAV -->
+<nav class="nav">
+  <button class="nav-tab active" onclick="switchTab('dashboard')">Dashboard</button>
+  <button class="nav-tab" onclick="switchTab('hourly')">Hourly</button>
+  <button class="nav-tab" onclick="switchTab('daily')">Daily</button>
+  <button class="nav-tab" onclick="switchTab('weekly')">Weekly</button>
+  <button class="nav-tab" onclick="switchTab('monthly')">Monthly</button>
+  <button class="nav-tab" onclick="switchTab('crm')">CRM Metrics</button>
+  <button class="nav-tab" onclick="switchTab('settings')">Settings</button>
+</nav>
+
+<!-- CONTROLS BAR -->
+<div class="controls-bar">
+  <div class="control-group">
+    <span class="control-label">Update Interval</span>
+    <select class="control-select" id="intervalSelect" onchange="setInterval_()">
+      <option value="15">Every 15 min</option>
+      <option value="30">Every 30 min</option>
+      <option value="60">Every 60 min</option>
+      <option value="5">Every 5 min (demo)</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <span class="control-label">Line</span>
+    <select class="control-select" id="lineSelect">
+      <option value="all">All Lines</option>
+      <option value="spring">Spring Line</option>
+      <option value="hypnos">Hypnos Line</option>
+    </select>
+  </div>
+  <div class="control-group">
+    <span class="control-label">Shift</span>
+    <select class="control-select" id="shiftSelect">
+      <option value="current">Current Shift</option>
+      <option value="A">Shift A (06:00 – 14:00)</option>
+      <option value="B">Shift B (14:00 – 22:00)</option>
+      <option value="C">Shift C (22:00 – 06:00)</option>
+    </select>
+  </div>
+  <button class="control-btn secondary" onclick="refreshData()">Refresh Now</button>
+  <button class="control-btn" onclick="simulateHMI()">Simulate HMI Push</button>
+  <div class="next-update">Next auto-update in <span id="countdown">15:00</span></div>
+</div>
+
+<!-- ======= DASHBOARD ======= -->
+<div class="main active" id="tab-dashboard">
+
+  <!-- KPI STRIP -->
+  <div class="kpi-strip">
+    <div class="kpi-card spring-accent">
+      <div class="kpi-label">Total Produced Today</div>
+      <div class="kpi-value" id="kpi-total">0</div>
+      <div class="kpi-sub">units across all lines</div>
+      <div class="kpi-delta up" id="kpi-total-delta">-- vs yesterday</div>
+    </div>
+    <div class="kpi-card spring-accent">
+      <div class="kpi-label">Spring Mattresses</div>
+      <div class="kpi-value" id="kpi-spring">0</div>
+      <div class="kpi-sub">units today</div>
+      <div class="kpi-delta up" id="kpi-spring-delta">--</div>
+    </div>
+    <div class="kpi-card hypnos-accent">
+      <div class="kpi-label">Hypnos Mattresses</div>
+      <div class="kpi-value" id="kpi-hypnos">0</div>
+      <div class="kpi-sub">units today</div>
+      <div class="kpi-delta up" id="kpi-hypnos-delta">--</div>
+    </div>
+    <div class="kpi-card success-accent">
+      <div class="kpi-label">Shift Target</div>
+      <div class="kpi-value" id="kpi-target-pct">0%</div>
+      <div class="kpi-sub" id="kpi-target-sub">0 / 0 units</div>
+      <div class="kpi-delta neutral" id="kpi-target-label">Current Shift</div>
+    </div>
+    <div class="kpi-card warn-accent">
+      <div class="kpi-label">Avg Cycle Time</div>
+      <div class="kpi-value" id="kpi-cycle">--</div>
+      <div class="kpi-sub">minutes per unit</div>
+      <div class="kpi-delta neutral">Target: 4.5 min</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Line Efficiency</div>
+      <div class="kpi-value" id="kpi-eff">--%</div>
+      <div class="kpi-sub">OEE this shift</div>
+      <div class="kpi-delta up" id="kpi-eff-delta">--</div>
+    </div>
+  </div>
+
+  <!-- ROW 1: Hourly Trend + Size Breakdown -->
+  <div class="grid-2-1">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Hourly Production — Today</div>
+          <div class="card-subtitle">Spring vs Hypnos, units per hour</div>
+        </div>
+        <span class="badge badge-success">Live</span>
+      </div>
+      <div class="card-body">
+        <div class="chart-wrap" style="height:200px">
+          <canvas id="hourlyChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Size Distribution</div>
+          <div class="card-subtitle">Today's production</div>
+        </div>
+      </div>
+      <div class="card-body" id="size-breakdown">
+        <!-- filled by JS -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 2: HMI Feed + Target Progress + Efficiency -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">HMI / PLC Live Feed</div>
+          <div class="card-subtitle">Incoming production records</div>
+        </div>
+        <span class="badge badge-spring">Auto</span>
+      </div>
+      <div class="card-body" style="padding:0.75rem 1rem">
+        <div class="hmi-feed" id="hmi-feed">
+          <!-- rows filled by JS -->
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Shift Progress</div>
+          <div class="card-subtitle">Target attainment by line</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="ring-wrap" id="ring-wrap">
+          <!-- filled by JS -->
+        </div>
+        <div style="margin-top:1rem; font-size:0.78rem; color:var(--text-muted); text-align:center">
+          Shift ends at <strong id="shift-end-time">--:--</strong> &nbsp;&middot;&nbsp; <span id="shift-remain">--</span> remaining
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div>
+          <div class="card-title">Line Efficiency</div>
+          <div class="card-subtitle">OEE components this shift</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="eff-meter" id="eff-meter">
+          <!-- filled by JS -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ROW 3: Recent Completion Log -->
+  <div class="card" style="margin-bottom:1rem">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Recent Production Log</div>
+        <div class="card-subtitle">Last 10 completed batches from HMI</div>
+      </div>
+      <span class="badge badge-hypnos">PLC Source</span>
+    </div>
+    <div class="card-body" style="padding:0">
+      <table class="prod-table" id="prod-log">
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Product Type</th>
+            <th>Variety</th>
+            <th>Size</th>
+            <th>Count</th>
+            <th>Cycle (min)</th>
+            <th>Line</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="prod-log-body">
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ======= HOURLY ======= -->
+<div class="main" id="tab-hourly">
+  <div class="kpi-strip">
+    <div class="kpi-card spring-accent">
+      <div class="kpi-label">This Hour Total</div>
+      <div class="kpi-value" id="h-kpi-1">0</div>
+      <div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Spring (this hour)</div>
+      <div class="kpi-value" id="h-kpi-2">0</div>
+      <div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card hypnos-accent">
+      <div class="kpi-label">Hypnos (this hour)</div>
+      <div class="kpi-value" id="h-kpi-3">0</div>
+      <div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card success-accent">
+      <div class="kpi-label">Hourly Target</div>
+      <div class="kpi-value" id="h-kpi-4">120</div>
+      <div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Best Hour Today</div>
+      <div class="kpi-value" id="h-kpi-5">--</div>
+      <div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Worst Hour Today</div>
+      <div class="kpi-value" id="h-kpi-6">--</div>
+      <div class="kpi-sub">units</div>
+    </div>
+  </div>
+  <div class="grid-1-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Hourly Production Trend</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:240px"><canvas id="hourlyDetailChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Hourly Size Mix</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:240px"><canvas id="hourlySizeChart"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Hour-by-Hour Log — Today</div></div>
+    <div class="card-body" style="padding:0">
+      <table class="prod-table">
+        <thead>
+          <tr><th>Hour</th><th>Spring</th><th>Hypnos</th><th>Total</th><th>King</th><th>Queen</th><th>Double</th><th>Single</th><th>vs Target</th></tr>
+        </thead>
+        <tbody id="hourly-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ======= DAILY ======= -->
+<div class="main" id="tab-daily">
+  <div class="kpi-strip">
+    <div class="kpi-card spring-accent">
+      <div class="kpi-label">Today Total</div>
+      <div class="kpi-value" id="d-kpi-1">0</div><div class="kpi-sub">units</div>
+    </div>
+    <div class="kpi-card"><div class="kpi-label">Yesterday</div><div class="kpi-value" id="d-kpi-2">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card success-accent"><div class="kpi-label">Daily Target</div><div class="kpi-value">960</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Best Day (7d)</div><div class="kpi-value" id="d-kpi-4">--</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Avg Daily (7d)</div><div class="kpi-value" id="d-kpi-5">--</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Downtime Today</div><div class="kpi-value" id="d-kpi-6">--</div><div class="kpi-sub">minutes</div></div>
+  </div>
+  <div class="grid-2-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Daily Production — Last 14 Days</div><div class="card-subtitle">Spring vs Hypnos</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:220px"><canvas id="dailyChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Today by Variety</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:220px"><canvas id="dailyVarietyChart"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Daily Production Table — Last 14 Days</div></div>
+    <div class="card-body" style="padding:0">
+      <table class="prod-table">
+        <thead><tr><th>Date</th><th>Spring</th><th>Hypnos</th><th>Total</th><th>King</th><th>Queen</th><th>Double</th><th>Single</th><th>Efficiency</th><th>Downtime</th></tr></thead>
+        <tbody id="daily-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ======= WEEKLY ======= -->
+<div class="main" id="tab-weekly">
+  <div class="kpi-strip">
+    <div class="kpi-card spring-accent"><div class="kpi-label">This Week Total</div><div class="kpi-value" id="w-kpi-1">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Last Week</div><div class="kpi-value" id="w-kpi-2">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card success-accent"><div class="kpi-label">Weekly Target</div><div class="kpi-value">4,800</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Spring (week)</div><div class="kpi-value" id="w-kpi-4">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card hypnos-accent"><div class="kpi-label">Hypnos (week)</div><div class="kpi-value" id="w-kpi-5">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Week Efficiency</div><div class="kpi-value" id="w-kpi-6">--%</div><div class="kpi-sub">OEE avg</div></div>
+  </div>
+  <div class="grid-1-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Weekly Comparison — Last 8 Weeks</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:240px"><canvas id="weeklyChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Day-of-Week Pattern</div><div class="card-subtitle">Avg output per weekday</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:240px"><canvas id="dowChart"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Weekly Summary Table</div></div>
+    <div class="card-body" style="padding:0">
+      <table class="prod-table">
+        <thead><tr><th>Week</th><th>Spring</th><th>Hypnos</th><th>Total</th><th>Target</th><th>Attainment</th><th>Avg Efficiency</th></tr></thead>
+        <tbody id="weekly-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ======= MONTHLY ======= -->
+<div class="main" id="tab-monthly">
+  <div class="kpi-strip">
+    <div class="kpi-card spring-accent"><div class="kpi-label">This Month Total</div><div class="kpi-value" id="m-kpi-1">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Last Month</div><div class="kpi-value" id="m-kpi-2">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card success-accent"><div class="kpi-label">Monthly Target</div><div class="kpi-value">20,000</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">Spring YTD</div><div class="kpi-value" id="m-kpi-4">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card hypnos-accent"><div class="kpi-label">Hypnos YTD</div><div class="kpi-value" id="m-kpi-5">0</div><div class="kpi-sub">units</div></div>
+    <div class="kpi-card"><div class="kpi-label">YTD Total</div><div class="kpi-value" id="m-kpi-6">0</div><div class="kpi-sub">units</div></div>
+  </div>
+  <div class="grid-2-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Monthly Production — 12-Month View</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:230px"><canvas id="monthlyChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">YTD Size Mix</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:230px"><canvas id="monthlySizeChart"></canvas></div></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">Monthly Summary</div></div>
+    <div class="card-body" style="padding:0">
+      <table class="prod-table">
+        <thead><tr><th>Month</th><th>Spring</th><th>Hypnos</th><th>Total</th><th>Target</th><th>Attainment</th><th>King</th><th>Queen</th><th>Double</th><th>Single</th></tr></thead>
+        <tbody id="monthly-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ======= CRM METRICS ======= -->
+<div class="main" id="tab-crm">
+  <div class="kpi-strip" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-card spring-accent"><div class="kpi-label">On-Time Delivery Rate</div><div class="kpi-value" id="crm-otd">--%</div><div class="kpi-sub">last 30 days</div></div>
+    <div class="kpi-card success-accent"><div class="kpi-label">Quality Pass Rate</div><div class="kpi-value" id="crm-qpr">--%</div><div class="kpi-sub">first-pass yield</div></div>
+    <div class="kpi-card"><div class="kpi-label">Defect Rate</div><div class="kpi-value" id="crm-defect">--%</div><div class="kpi-sub">units rejected</div></div>
+    <div class="kpi-card hypnos-accent"><div class="kpi-label">Rework Units</div><div class="kpi-value" id="crm-rework">--</div><div class="kpi-sub">this month</div></div>
+  </div>
+  <div class="grid-1-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Quality Trend — 12 Weeks</div><div class="card-subtitle">Pass rate and defect rate</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:230px"><canvas id="qualityChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Order Fulfilment by Product</div><div class="card-subtitle">Ordered vs Produced vs Shipped</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:230px"><canvas id="fulfilmentChart"></canvas></div></div>
+    </div>
+  </div>
+  <div class="grid-1-1">
+    <div class="card">
+      <div class="card-header"><div class="card-title">Defect Breakdown by Category</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:220px"><canvas id="defectChart"></canvas></div></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><div class="card-title">Production vs Demand (Monthly)</div></div>
+      <div class="card-body"><div class="chart-wrap" style="height:220px"><canvas id="demandChart"></canvas></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ======= SETTINGS ======= -->
+<div class="main" id="tab-settings">
+  <div class="settings-panel">
+    <div class="settings-section">
+      <div class="settings-title">Data Source — HMI / PLC</div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">PLC Endpoint URL</div><div class="settings-row-desc">OPC-UA or Modbus TCP address of the HMI controller</div></div>
+        <input class="control-select" value="opc.tcp://192.168.1.100:4840" style="width:240px">
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Authentication Method</div></div>
+        <select class="control-select" style="width:160px"><option>Anonymous</option><option>Username/Password</option><option>Certificate</option></select>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Polling Interval</div></div>
+        <select class="control-select" id="settingsInterval" style="width:160px">
+          <option value="5">5 minutes</option>
+          <option value="15" selected>15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Connection Status</div></div>
+        <span class="badge badge-success">Connected (simulated)</span>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-title">Display Preferences</div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">TV Display Mode</div><div class="settings-row-desc">Full-screen kiosk optimised layout</div></div>
+        <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on"></div></div>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Auto-rotate Tabs</div><div class="settings-row-desc">Cycle through dashboard, hourly, daily views automatically</div></div>
+        <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle"></div></div>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Rotate Interval (seconds)</div></div>
+        <select class="control-select" style="width:130px"><option>30s</option><option>60s</option><option>120s</option></select>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-title">Production Targets</div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Hourly Target (Spring)</div></div>
+        <input class="control-select" type="number" value="72" style="width:100px">
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Hourly Target (Hypnos)</div></div>
+        <input class="control-select" type="number" value="48" style="width:100px">
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Shift Duration (hours)</div></div>
+        <input class="control-select" type="number" value="8" style="width:100px">
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <div class="settings-title">Alerts</div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Low Production Alert</div><div class="settings-row-desc">Trigger when output falls below 80% of hourly target</div></div>
+        <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on"></div></div>
+      </div>
+      <div class="settings-row">
+        <div><div class="settings-row-label">Downtime Alert</div><div class="settings-row-desc">Trigger when no units recorded for more than 20 minutes</div></div>
+        <div class="toggle-wrap" onclick="this.querySelector('.toggle').classList.toggle('on')"><div class="toggle on"></div></div>
+      </div>
+    </div>
+
+    <button class="control-btn" style="margin-top:0.5rem">Save Settings</button>
+  </div>
+</div>
+
+<footer class="footer">
+  Peps Mattress Automated Production Display System &nbsp;&middot;&nbsp; HMI/PLC Integration Layer &nbsp;&middot;&nbsp; Data refreshes per configured interval
+</footer>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+
+<script>
+// ======================== BACKEND DATA SERVICE LAYER ========================
+
+/**
+ * Backend Data Service - Handles all data generation and management
+ * This replaces the original simple random functions with a more structured backend
+ */
+class ProductionDataService {
+  constructor() {
+    this.SIZES = ['King', 'Queen', 'Double', 'Single'];
+    this.VARIETIES_SPRING = ['Bonnell', 'Pocket', 'Offset', 'Continuous'];
+    this.VARIETIES_HYPNOS = ['Comfort', 'Ortho', 'Pillow Top', 'Euro Top'];
+    this.SIZE_COLORS = ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'];
+    
+    // Production targets and constants
+    this.TARGETS = {
+      hourlySpring: 72,
+      hourlyHypnos: 48,
+      hourlyTotal: 120,
+      daily: 960,
+      weekly: 4800,
+      monthly: 20000,
+      shift: 960,
+      cycleTime: 4.5
+    };
+    
+    // Cache for generated data
+    this.cache = {
+      hourly: null,
+      daily: null,
+      weekly: null,
+      monthly: null,
+      hmiLog: []
+    };
+  }
+
+  // Utility functions
+  rand(min, max) {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  }
+
+  randF(min, max) {
+    return +(Math.random() * (max - min) + min).toFixed(1);
+  }
+
+  // Generate hourly production data for today
+  generateHourlyData() {
+    const now = new Date();
+    const hour = now.getHours();
+    let data = [];
+    
+    for (let h = 6; h <= hour; h++) {
+      const spring = this.rand(55, 80);
+      const hypnos = this.rand(35, 55);
+      const total = spring + hypnos;
+      
+      data.push({
+        hour: h,
+        spring: spring,
+        hypnos: hypnos,
+        total: total,
+        king: this.rand(10, 20),
+        queen: this.rand(20, 35),
+        double: this.rand(15, 25),
+        single: this.rand(5, 15),
+        efficiency: this.randF(82, 97),
+        vsTarget: total - this.TARGETS.hourlyTotal
+      });
+    }
+    
+    this.cache.hourly = data;
+    return data;
+  }
+
+  // Generate daily production data for last 14 days
+  generateDailyData() {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const now = new Date();
+    let data = [];
+    
+    for (let d = 13; d >= 0; d--) {
+      const dt = new Date(now);
+      dt.setDate(dt.getDate() - d);
+      
+      const spring = this.rand(420, 590);
+      const hypnos = this.rand(280, 390);
+      const total = spring + hypnos;
+      
+      data.push({
+        date: `${dt.getDate()} ${months[dt.getMonth()]}`,
+        spring: spring,
+        hypnos: hypnos,
+        total: total,
+        king: this.rand(120, 180),
+        queen: this.rand(200, 280),
+        double: this.rand(150, 200),
+        single: this.rand(60, 100),
+        efficiency: this.randF(80, 96),
+        downtime: this.rand(5, 45),
+        vsTarget: total - this.TARGETS.daily
+      });
+    }
+    
+    this.cache.daily = data;
+    return data;
+  }
+
+  // Generate weekly production data for last 8 weeks
+  generateWeeklyData() {
+    let data = [];
+    
+    for (let w = 7; w >= 0; w--) {
+      const spring = this.rand(2100, 2900);
+      const hypnos = this.rand(1400, 1950);
+      const total = spring + hypnos;
+      
+      data.push({
+        week: `W${8 - w}`,
+        spring: spring,
+        hypnos: hypnos,
+        total: total,
+        target: this.TARGETS.weekly,
+        efficiency: this.randF(82, 95),
+        attainment: Math.round((total / this.TARGETS.weekly) * 100)
+      });
+    }
+    
+    this.cache.weekly = data;
+    return data;
+  }
+
+  // Generate monthly production data for 13 months
+  generateMonthlyData() {
+    const months = ['Sep','Oct','Nov','Dec','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep'];
+    let data = [];
+    
+    for (let m = 0; m < 13; m++) {
+      const spring = this.rand(8500, 11500);
+      const hypnos = this.rand(5500, 7500);
+      const total = spring + hypnos;
+      
+      data.push({
+        month: months[m],
+        spring: spring,
+        hypnos: hypnos,
+        total: total,
+        target: this.TARGETS.monthly,
+        king: this.rand(3000, 5000),
+        queen: this.rand(5000, 7000),
+        double: this.rand(4000, 5500),
+        single: this.rand(1500, 2500),
+        attainment: Math.round((total / this.TARGETS.monthly) * 100)
+      });
+    }
+    
+    this.cache.monthly = data;
+    return data;
+  }
+
+  // Generate a single HMI/PLC production record
+  generateHMIRecord() {
+    const type = Math.random() > 0.45 ? 'Spring' : 'Hypnos';
+    const size = this.SIZES[this.rand(0, 3)];
+    const variety = type === 'Spring' 
+      ? this.VARIETIES_SPRING[this.rand(0, 3)] 
+      : this.VARIETIES_HYPNOS[this.rand(0, 3)];
+    const count = this.rand(8, 24);
+    const cycle = this.randF(3.8, 5.6);
+    
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    
+    const statuses = ['Complete', 'Complete', 'Complete', 'In Progress', 'Delayed'];
+    const status = statuses[this.rand(0, 4)];
+    
+    return {
+      time: `${hh}:${mm}`,
+      type: type,
+      variety: variety,
+      size: size,
+      count: count,
+      cycle: cycle,
+      status: status,
+      line: this.rand(1, 4)
+    };
+  }
+
+  // Get cached data or generate new
+  getHourlyData() {
+    return this.cache.hourly || this.generateHourlyData();
+  }
+
+  getDailyData() {
+    return this.cache.daily || this.generateDailyData();
+  }
+
+  getWeeklyData() {
+    return this.cache.weekly || this.generateWeeklyData();
+  }
+
+  getMonthlyData() {
+    return this.cache.monthly || this.generateMonthlyData();
+  }
+
+  // Add HMI record to log
+  addHMIRecord() {
+    const record = this.generateHMIRecord();
+    this.cache.hmiLog.push(record);
+    
+    // Keep only last 20 records
+    if (this.cache.hmiLog.length > 20) {
+      this.cache.hmiLog.shift();
+    }
+    
+    return record;
+  }
+
+  // Get HMI log
+  getHMILog() {
+    return this.cache.hmiLog;
+  }
+
+  // Initialize HMI log with some records
+  initializeHMILog(count = 8) {
+    this.cache.hmiLog = [];
+    for (let i = 0; i < count; i++) {
+      this.cache.hmiLog.push(this.generateHMIRecord());
+    }
+    return this.cache.hmiLog;
+  }
+
+  // Clear all cached data (for refresh)
+  clearCache() {
+    this.cache = {
+      hourly: null,
+      daily: null,
+      weekly: null,
+      monthly: null,
+      hmiLog: []
+    };
+  }
+
+  // Calculate shift totals from hourly data
+  calculateShiftTotals(hourlyData) {
+    const springTotal = hourlyData.reduce((sum, row) => sum + row.spring, 0);
+    const hypnosTotal = hourlyData.reduce((sum, row) => sum + row.hypnos, 0);
+    
+    // Assume current shift is 60% of day's production
+    const springShift = Math.round(springTotal * 0.6);
+    const hypnosShift = Math.round(hypnosTotal * 0.6);
+    
+    return {
+      springToday: springTotal,
+      hypnosToday: hypnosTotal,
+      springShift: springShift,
+      hypnosShift: hypnosShift,
+      totalShift: springShift + hypnosShift
+    };
+  }
+
+  // Calculate YTD totals from monthly data
+  calculateYTDTotals(monthlyData) {
+    const ytdSpring = monthlyData.slice(-9).reduce((sum, row) => sum + row.spring, 0);
+    const ytdHypnos = monthlyData.slice(-9).reduce((sum, row) => sum + row.hypnos, 0);
+    
+    return {
+      spring: ytdSpring,
+      hypnos: ytdHypnos,
+      total: ytdSpring + ytdHypnos
+    };
+  }
+
+  // Generate CRM metrics data
+  generateCRMMetrics() {
+    return {
+      onTimeDelivery: this.randF(91, 98),
+      qualityPassRate: this.randF(94, 99),
+      defectRate: this.randF(0.8, 2.5),
+      reworkUnits: this.rand(18, 65),
+      qualityTrend: {
+        weeks: Array.from({ length: 12 }, (_, i) => `W${i + 1}`),
+        passRate: Array.from({ length: 12 }, () => this.randF(93, 99)),
+        defectRate: Array.from({ length: 12 }, () => this.randF(0.5, 2.8))
+      },
+      fulfilment: {
+        categories: ['Spring King', 'Spring Queen', 'Hypnos Comfort', 'Hypnos Ortho', 'Spring Double', 'Hypnos Pillow'],
+        ordered: [420, 680, 310, 250, 380, 190],
+        produced: [405, 672, 305, 245, 375, 188],
+        shipped: [390, 650, 290, 235, 360, 180]
+      },
+      defects: {
+        categories: ['Stitching', 'Spring Fault', 'Foam Shift', 'Cover Tear', 'Sizing Error'],
+        values: [this.rand(25, 40), this.rand(20, 35), this.rand(15, 25), this.rand(10, 20), this.rand(5, 15)]
+      },
+      demand: {
+        months: ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'],
+        production: Array.from({ length: 6 }, () => this.rand(17000, 21000)),
+        demand: Array.from({ length: 6 }, () => this.rand(18000, 22000))
+      }
+    };
+  }
+}
+
+// ======================== CHART SERVICE ========================
+
+/**
+ * Chart Service - Handles all Chart.js operations
+ */
+class ChartService {
+  constructor() {
+    this.charts = {};
+    
+    // Set global Chart.js defaults
+    Chart.defaults.font.family = "'Lora', Georgia, serif";
+    Chart.defaults.color = '#4A6A7D';
+  }
+
+  createBarLineChart(canvasId, labels, datasets, options = {}) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    
+    // Destroy existing chart if it exists
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+    
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { 
+          position: 'top', 
+          labels: { boxWidth: 10, padding: 14, font: { size: 10 } } 
+        },
+        tooltip: { mode: 'index' }
+      },
+      scales: {
+        x: { 
+          grid: { color: '#EEF5FA' }, 
+          ticks: { font: { size: 10 } }, 
+          stacked: options.stacked || false 
+        },
+        y: { 
+          grid: { color: '#EEF5FA' }, 
+          ticks: { font: { size: 10 } }, 
+          stacked: options.stacked || false,
+          suggestedMin: options.yMin || 0 
+        }
+      },
+      ...options
+    };
+    
+    this.charts[canvasId] = new Chart(ctx, {
+      type: options.type || 'bar',
+      data: { labels, datasets },
+      options: chartOptions
+    });
+    
+    return this.charts[canvasId];
+  }
+
+  createDoughnutChart(canvasId, labels, data, colors) {
+    const ctx = document.getElementById(canvasId);
+    if (!ctx) return null;
+    
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+    }
+    
+    this.charts[canvasId] = new Chart(ctx, {
+      type: 'doughnut',
+      data: { 
+        labels, 
+        datasets: [{ 
+          data, 
+          backgroundColor: colors, 
+          borderWidth: 2, 
+          borderColor: '#fff' 
+        }] 
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { 
+            position: 'right', 
+            labels: { boxWidth: 10, padding: 10, font: { size: 10 } } 
+          } 
+        },
+        cutout: '65%'
+      }
+    });
+    
+    return this.charts[canvasId];
+  }
+
+  createLineChart(canvasId, labels, datasets, options = {}) {
+    const lineDatasets = datasets.map(d => ({
+      ...d,
+      tension: 0.4,
+      pointRadius: 3,
+      fill: false
+    }));
+    
+    return this.createBarLineChart(canvasId, labels, lineDatasets, { 
+      type: 'line', 
+      ...options 
+    });
+  }
+
+  destroyChart(canvasId) {
+    if (this.charts[canvasId]) {
+      this.charts[canvasId].destroy();
+      delete this.charts[canvasId];
+    }
+  }
+
+  destroyAllCharts() {
+    Object.keys(this.charts).forEach(id => this.destroyChart(id));
+  }
+}
+
+// ======================== UI RENDERER ========================
+
+/**
+ * UI Renderer - Handles all DOM updates and UI rendering
+ */
+class UIRenderer {
+  constructor(dataService, chartService) {
+    this.dataService = dataService;
+    this.chartService = chartService;
+  }
+
+  // Update KPI cards on dashboard
+  updateDashboardKPIs(shiftTotals) {
+    const { springToday, hypnosToday, springShift, hypnosShift, totalShift } = shiftTotals;
+    const total = springToday + hypnosToday;
+    const targetPct = Math.round(totalShift / this.dataService.TARGETS.shift * 100);
+    
+    document.getElementById('kpi-total').textContent = total.toLocaleString();
+    document.getElementById('kpi-total-delta').textContent = `+${this.dataService.rand(3, 8)}% vs yesterday`;
+    
+    document.getElementById('kpi-spring').textContent = springToday.toLocaleString();
+    document.getElementById('kpi-spring-delta').textContent = `+${this.dataService.rand(2, 6)}% vs yesterday`;
+    
+    document.getElementById('kpi-hypnos').textContent = hypnosToday.toLocaleString();
+    document.getElementById('kpi-hypnos-delta').textContent = `+${this.dataService.rand(1, 5)}% vs yesterday`;
+    
+    document.getElementById('kpi-target-pct').textContent = targetPct + '%';
+    document.getElementById('kpi-target-sub').textContent = `${totalShift} / ${this.dataService.TARGETS.shift} units`;
+    
+    document.getElementById('kpi-cycle').textContent = this.dataService.randF(4.1, 5.0);
+    
+    const eff = this.dataService.randF(85, 93);
+    document.getElementById('kpi-eff').textContent = eff + '%';
+    document.getElementById('kpi-eff-delta').textContent = `+${this.dataService.randF(0.5, 2.5)}% vs last shift`;
+  }
+
+  // Render size distribution breakdown
+  renderSizeBreakdown(hourlyData) {
+    const sizes = { King: 0, Queen: 0, Double: 0, Single: 0 };
+    
+    hourlyData.forEach(row => {
+      sizes.King += row.king;
+      sizes.Queen += row.queen;
+      sizes.Double += row.double;
+      sizes.Single += row.single;
+    });
+    
+    const total = Object.values(sizes).reduce((a, b) => a + b, 0);
+    const sizeColors = { King: '#2E7AAB', Queen: '#1B4F6A', Double: '#3E9AD0', Single: '#7ABCD5' };
+    
+    const html = Object.entries(sizes).map(([name, val]) => {
+      const pct = Math.round(val / total * 100);
+      return `<div class="size-row">
+        <div class="size-name">${name}</div>
+        <div class="size-bar-wrap"><div class="size-bar" style="width:${pct}%;background:${sizeColors[name]}"></div></div>
+        <div class="size-count">${val}</div>
+        <div class="size-pct">${pct}%</div>
+      </div>`;
+    }).join('');
+    
+    document.getElementById('size-breakdown').innerHTML = html;
+  }
+
+  // Render HMI live feed
+  renderHMIFeed(hmiLog) {
+    const html = hmiLog.slice(-10).reverse().map(row => {
+      const statusClass = row.status === 'Complete' ? 'status-complete' : 
+                         row.status === 'Delayed' ? 'status-delayed' : 'status-progress';
+      const badgeClass = row.type === 'Spring' ? 'badge-spring' : 'badge-hypnos';
+      
+      return `<div class="hmi-row">
+        <div class="hmi-time">${row.time}</div>
+        <div class="hmi-type"><span class="badge ${badgeClass}" style="font-size:0.62rem">${row.type}</span></div>
+        <div class="hmi-size">${row.size} / ${row.variety}</div>
+        <div class="hmi-count">${row.count}</div>
+        <div class="hmi-status"><span class="status-pill ${statusClass}">${row.status}</span></div>
+      </div>`;
+    }).join('');
+    
+    document.getElementById('hmi-feed').innerHTML = html;
+  }
+
+  // Render progress rings
+  renderProgressRings(shiftTotals) {
+    const { springShift, hypnosShift, totalShift } = shiftTotals;
+    const springPct = Math.round(springShift / (this.dataService.TARGETS.shift * 0.6) * 100);
+    const hypnosPct = Math.round(hypnosShift / (this.dataService.TARGETS.shift * 0.4) * 100);
+    const totalPct = Math.round(totalShift / this.dataService.TARGETS.shift * 100);
+    
+    const html = this.makeRing('Spring', springPct, '#2E7AAB') + 
+                 this.makeRing('Hypnos', hypnosPct, '#1B4F6A') + 
+                 this.makeRing('Total', totalPct, '#3E9AD0');
+    
+    document.getElementById('ring-wrap').innerHTML = html;
+  }
+
+  makeRing(label, pct, color) {
+    pct = Math.min(100, pct);
+    const r = 40;
+    const circ = 2 * Math.PI * r;
+    const dash = (pct / 100) * circ;
+    
+    return `<div class="ring-item">
+      <svg class="ring-svg" width="100" height="100" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="${r}" fill="none" stroke="#DDEEF8" stroke-width="8"/>
+        <circle cx="50" cy="50" r="${r}" fill="none" stroke="${color}" stroke-width="8"
+          stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}"
+          stroke-dashoffset="${(circ / 4).toFixed(1)}"
+          stroke-linecap="round" transform="rotate(-90 50 50)"
+          style="transition:stroke-dasharray 1s ease"/>
+        <text x="50" y="46" text-anchor="middle" font-family="Playfair Display,serif" font-size="16" font-weight="700" fill="#1A2E3B">${pct}%</text>
+        <text x="50" y="60" text-anchor="middle" font-family="Lora,serif" font-size="9" fill="#7A9DB5">${label}</text>
+      </svg>
+    </div>`;
+  }
+
+  // Render shift time information
+  renderShiftTime() {
+    const now = new Date();
+    const shiftEnd = new Date();
+    shiftEnd.setHours(22, 0, 0, 0);
+    
+    const remain = Math.max(0, shiftEnd - now);
+    const hours = Math.floor(remain / 3600000);
+    const minutes = Math.floor((remain % 3600000) / 60000);
+    
+    document.getElementById('shift-end-time').textContent = '22:00';
+    document.getElementById('shift-remain').textContent = `${hours}h ${minutes}m`;
+  }
+
+  // Render efficiency meters
+  renderEfficiencyMeters() {
+    const metrics = [
+      { label: 'Availability', val: this.dataService.randF(88, 96), color: '#2E7AAB' },
+      { label: 'Performance', val: this.dataService.randF(84, 94), color: '#1B4F6A' },
+      { label: 'Quality', val: this.dataService.randF(91, 99), color: '#3E9AD0' },
+      { label: 'OEE', val: this.dataService.randF(83, 92), color: '#2A7D5B' }
+    ];
+    
+    const html = metrics.map(e => `<div class="eff-row">
+      <div class="eff-label">${e.label}</div>
+      <div class="eff-bar-wrap"><div class="eff-bar" style="width:${e.val}%;background:${e.color}"></div></div>
+      <div class="eff-val" style="color:${e.color}">${e.val}%</div>
+    </div>`).join('');
+    
+    document.getElementById('eff-meter').innerHTML = html;
+  }
+
+  // Render production log table
+  renderProductionLog(records) {
+    const html = records.map(row => {
+      const statusClass = row.status === 'Complete' ? 'status-complete' : 
+                         row.status === 'Delayed' ? 'status-delayed' : 'status-progress';
+      const badgeClass = row.type === 'Spring' ? 'badge-spring' : 'badge-hypnos';
+      
+      return `<tr>
+        <td>${row.time}</td>
+        <td><span class="badge ${badgeClass}">${row.type}</span></td>
+        <td>${row.variety}</td>
+        <td>${row.size}</td>
+        <td class="num">${row.count}</td>
+        <td>${row.cycle}</td>
+        <td>Line ${row.line}</td>
+        <td><span class="status-pill ${statusClass}">${row.status}</span></td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('prod-log-body').innerHTML = html;
+  }
+
+  // Render hourly production chart
+  renderHourlyChart(hourlyData) {
+    const hours = hourlyData.map(r => r.hour + ':00');
+    const target = hourlyData.map(() => this.dataService.TARGETS.hourlyTotal);
+    
+    this.chartService.createBarLineChart('hourlyChart', hours, [
+      { 
+        label: 'Spring', 
+        data: hourlyData.map(r => r.spring), 
+        backgroundColor: 'rgba(46,122,171,0.7)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Hypnos', 
+        data: hourlyData.map(r => r.hypnos), 
+        backgroundColor: 'rgba(27,79,106,0.7)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Target', 
+        data: target, 
+        type: 'line', 
+        borderColor: '#C9952E', 
+        borderDash: [4, 4], 
+        borderWidth: 1.5, 
+        pointRadius: 0, 
+        backgroundColor: 'transparent', 
+        fill: false 
+      }
+    ], { stacked: true });
+  }
+
+  // Render hourly tab KPIs
+  renderHourlyKPIs(hourlyData, shiftTotals) {
+    const springH = hourlyData.map(r => r.spring);
+    const hypnosH = hourlyData.map(r => r.hypnos);
+    const totals = hourlyData.map(r => r.total);
+    
+    document.getElementById('h-kpi-1').textContent = (shiftTotals.springToday + shiftTotals.hypnosToday).toLocaleString();
+    document.getElementById('h-kpi-2').textContent = springH[springH.length - 1] || 0;
+    document.getElementById('h-kpi-3').textContent = hypnosH[hypnosH.length - 1] || 0;
+    document.getElementById('h-kpi-5').textContent = Math.max(...totals);
+    document.getElementById('h-kpi-6').textContent = Math.min(...totals);
+  }
+
+  // Render hourly detail chart
+  renderHourlyDetailChart(hourlyData) {
+    const hours = hourlyData.map(r => r.hour + ':00');
+    
+    this.chartService.createBarLineChart('hourlyDetailChart', hours, [
+      { 
+        label: 'Spring', 
+        data: hourlyData.map(r => r.spring), 
+        backgroundColor: 'rgba(46,122,171,0.75)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Hypnos', 
+        data: hourlyData.map(r => r.hypnos), 
+        backgroundColor: 'rgba(27,79,106,0.75)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Target', 
+        data: hourlyData.map(() => this.dataService.TARGETS.hourlyTotal), 
+        type: 'line', 
+        borderColor: '#C9952E', 
+        borderDash: [4, 4], 
+        borderWidth: 1.5, 
+        pointRadius: 0, 
+        backgroundColor: 'transparent', 
+        fill: false 
+      }
+    ], { stacked: true });
+  }
+
+  // Render hourly size doughnut chart
+  renderHourlySizeChart(hourlyData) {
+    const king = hourlyData.reduce((s, r) => s + r.king, 0);
+    const queen = hourlyData.reduce((s, r) => s + r.queen, 0);
+    const double = hourlyData.reduce((s, r) => s + r.double, 0);
+    const single = hourlyData.reduce((s, r) => s + r.single, 0);
+    
+    this.chartService.createDoughnutChart(
+      'hourlySizeChart',
+      this.dataService.SIZES,
+      [king, queen, double, single],
+      this.dataService.SIZE_COLORS
+    );
+  }
+
+  // Render hourly table
+  renderHourlyTable(hourlyData) {
+    const html = hourlyData.map(row => {
+      const diff = row.total - this.dataService.TARGETS.hourlyTotal;
+      const diffColor = diff >= 0 ? 'var(--success)' : '#B03A2E';
+      
+      return `<tr>
+        <td>${row.hour}:00</td>
+        <td class="num">${row.spring}</td>
+        <td class="num">${row.hypnos}</td>
+        <td class="num">${row.total}</td>
+        <td>${row.king}</td>
+        <td>${row.queen}</td>
+        <td>${row.double}</td>
+        <td>${row.single}</td>
+        <td style="color:${diffColor};font-weight:600">${diff >= 0 ? '+' : ''}${diff}</td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('hourly-table-body').innerHTML = html;
+  }
+
+  // Render daily KPIs
+  renderDailyKPIs(dailyData) {
+    const d = dailyData;
+    document.getElementById('d-kpi-1').textContent = d[d.length - 1].total.toLocaleString();
+    document.getElementById('d-kpi-2').textContent = d[d.length - 2].total.toLocaleString();
+    
+    const totals = d.map(r => r.total);
+    document.getElementById('d-kpi-4').textContent = Math.max(...totals).toLocaleString();
+    document.getElementById('d-kpi-5').textContent = Math.round(totals.reduce((a, b) => a + b, 0) / totals.length).toLocaleString();
+    document.getElementById('d-kpi-6').textContent = this.dataService.rand(12, 55);
+  }
+
+  // Render daily chart
+  renderDailyChart(dailyData) {
+    this.chartService.createBarLineChart('dailyChart', dailyData.map(r => r.date), [
+      { 
+        label: 'Spring', 
+        data: dailyData.map(r => r.spring), 
+        backgroundColor: 'rgba(46,122,171,0.7)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Hypnos', 
+        data: dailyData.map(r => r.hypnos), 
+        backgroundColor: 'rgba(27,79,106,0.7)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      }
+    ], { stacked: true });
+  }
+
+  // Render daily variety chart
+  renderDailyVarietyChart(dailyData) {
+    const last = dailyData[dailyData.length - 1];
+    this.chartService.createDoughnutChart(
+      'dailyVarietyChart',
+      this.dataService.SIZES,
+      [last.king, last.queen, last.double, last.single],
+      this.dataService.SIZE_COLORS
+    );
+  }
+
+  // Render daily table
+  renderDailyTable(dailyData) {
+    const html = dailyData.map(row => {
+      const effColor = row.efficiency >= 90 ? 'var(--success)' : 'var(--warn)';
+      
+      return `<tr>
+        <td>${row.date}</td>
+        <td class="num">${row.spring}</td>
+        <td class="num">${row.hypnos}</td>
+        <td class="num">${row.total}</td>
+        <td>${row.king}</td>
+        <td>${row.queen}</td>
+        <td>${row.double}</td>
+        <td>${row.single}</td>
+        <td style="color:${effColor}">${row.efficiency}%</td>
+        <td>${row.downtime} min</td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('daily-table-body').innerHTML = html;
+  }
+
+  // Render weekly KPIs
+  renderWeeklyKPIs(weeklyData) {
+    const w = weeklyData;
+    document.getElementById('w-kpi-1').textContent = w[w.length - 1].total.toLocaleString();
+    document.getElementById('w-kpi-2').textContent = w[w.length - 2].total.toLocaleString();
+    document.getElementById('w-kpi-4').textContent = w[w.length - 1].spring.toLocaleString();
+    document.getElementById('w-kpi-5').textContent = w[w.length - 1].hypnos.toLocaleString();
+    document.getElementById('w-kpi-6').textContent = this.dataService.randF(84, 92) + '%';
+  }
+
+  // Render weekly chart
+  renderWeeklyChart(weeklyData) {
+    this.chartService.createBarLineChart('weeklyChart', weeklyData.map(r => r.week), [
+      { 
+        label: 'Spring', 
+        data: weeklyData.map(r => r.spring), 
+        backgroundColor: 'rgba(46,122,171,0.7)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Hypnos', 
+        data: weeklyData.map(r => r.hypnos), 
+        backgroundColor: 'rgba(27,79,106,0.7)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Target', 
+        data: weeklyData.map(() => this.dataService.TARGETS.weekly), 
+        type: 'line', 
+        borderColor: '#C9952E', 
+        borderDash: [5, 5], 
+        borderWidth: 1.5, 
+        pointRadius: 0, 
+        backgroundColor: 'transparent', 
+        fill: false 
+      }
+    ], { stacked: true });
+  }
+
+  // Render day-of-week chart
+  renderDOWChart() {
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    this.chartService.createBarLineChart('dowChart', days, [
+      { 
+        label: 'Avg Output', 
+        data: days.map(() => this.dataService.rand(850, 1020)), 
+        backgroundColor: 'rgba(62,154,208,0.7)', 
+        borderColor: '#3E9AD0', 
+        borderWidth: 1 
+      }
+    ]);
+  }
+
+  // Render weekly table
+  renderWeeklyTable(weeklyData) {
+    const html = weeklyData.map(row => {
+      const att = Math.round(row.total / row.target * 100);
+      const attColor = att >= 100 ? 'var(--success)' : att >= 90 ? 'var(--warn)' : '#B03A2E';
+      
+      return `<tr>
+        <td>${row.week}</td>
+        <td class="num">${row.spring.toLocaleString()}</td>
+        <td class="num">${row.hypnos.toLocaleString()}</td>
+        <td class="num">${row.total.toLocaleString()}</td>
+        <td>${row.target.toLocaleString()}</td>
+        <td style="color:${attColor};font-weight:600">${att}%</td>
+        <td>${row.efficiency}%</td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('weekly-table-body').innerHTML = html;
+  }
+
+  // Render monthly KPIs
+  renderMonthlyKPIs(monthlyData, ytdTotals) {
+    const m = monthlyData;
+    document.getElementById('m-kpi-1').textContent = m[m.length - 1].total.toLocaleString();
+    document.getElementById('m-kpi-2').textContent = m[m.length - 2].total.toLocaleString();
+    document.getElementById('m-kpi-4').textContent = ytdTotals.spring.toLocaleString();
+    document.getElementById('m-kpi-5').textContent = ytdTotals.hypnos.toLocaleString();
+    document.getElementById('m-kpi-6').textContent = ytdTotals.total.toLocaleString();
+  }
+
+  // Render monthly chart
+  renderMonthlyChart(monthlyData) {
+    this.chartService.createBarLineChart('monthlyChart', monthlyData.map(r => r.month), [
+      { 
+        label: 'Spring', 
+        data: monthlyData.map(r => r.spring), 
+        backgroundColor: 'rgba(46,122,171,0.7)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Hypnos', 
+        data: monthlyData.map(r => r.hypnos), 
+        backgroundColor: 'rgba(27,79,106,0.7)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Target', 
+        data: monthlyData.map(() => this.dataService.TARGETS.monthly), 
+        type: 'line', 
+        borderColor: '#C9952E', 
+        borderDash: [5, 5], 
+        borderWidth: 1.5, 
+        pointRadius: 0, 
+        backgroundColor: 'transparent', 
+        fill: false 
+      }
+    ], { stacked: true });
+  }
+
+  // Render monthly size chart
+  renderMonthlySizeChart(monthlyData) {
+    const ytd = { King: 0, Queen: 0, Double: 0, Single: 0 };
+    monthlyData.forEach(row => {
+      ytd.King += row.king;
+      ytd.Queen += row.queen;
+      ytd.Double += row.double;
+      ytd.Single += row.single;
+    });
+    
+    this.chartService.createDoughnutChart(
+      'monthlySizeChart',
+      this.dataService.SIZES,
+      Object.values(ytd),
+      this.dataService.SIZE_COLORS
+    );
+  }
+
+  // Render monthly table
+  renderMonthlyTable(monthlyData) {
+    const html = monthlyData.map(row => {
+      const att = Math.round(row.total / row.target * 100);
+      const attColor = att >= 100 ? 'var(--success)' : att >= 90 ? 'var(--warn)' : '#B03A2E';
+      
+      return `<tr>
+        <td>${row.month}</td>
+        <td class="num">${row.spring.toLocaleString()}</td>
+        <td class="num">${row.hypnos.toLocaleString()}</td>
+        <td class="num">${row.total.toLocaleString()}</td>
+        <td>${row.target.toLocaleString()}</td>
+        <td style="color:${attColor};font-weight:600">${att}%</td>
+        <td>${row.king.toLocaleString()}</td>
+        <td>${row.queen.toLocaleString()}</td>
+        <td>${row.double.toLocaleString()}</td>
+        <td>${row.single.toLocaleString()}</td>
+      </tr>`;
+    }).join('');
+    
+    document.getElementById('monthly-table-body').innerHTML = html;
+  }
+
+  // Render CRM metrics
+  renderCRMMetrics(crmData) {
+    document.getElementById('crm-otd').textContent = crmData.onTimeDelivery + '%';
+    document.getElementById('crm-qpr').textContent = crmData.qualityPassRate + '%';
+    document.getElementById('crm-defect').textContent = crmData.defectRate + '%';
+    document.getElementById('crm-rework').textContent = crmData.reworkUnits;
+    
+    // Quality trend chart
+    this.chartService.createLineChart('qualityChart', crmData.qualityTrend.weeks, [
+      { 
+        label: 'Pass Rate (%)', 
+        data: crmData.qualityTrend.passRate, 
+        borderColor: '#2A7D5B', 
+        backgroundColor: 'rgba(42,125,91,0.1)', 
+        fill: true 
+      },
+      { 
+        label: 'Defect Rate (%)', 
+        data: crmData.qualityTrend.defectRate, 
+        borderColor: '#B03A2E', 
+        backgroundColor: 'rgba(176,58,46,0.1)', 
+        fill: true 
+      }
+    ]);
+    
+    // Fulfilment chart
+    this.chartService.createBarLineChart('fulfilmentChart', crmData.fulfilment.categories, [
+      { 
+        label: 'Ordered', 
+        data: crmData.fulfilment.ordered, 
+        backgroundColor: 'rgba(62,154,208,0.6)', 
+        borderColor: '#3E9AD0', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Produced', 
+        data: crmData.fulfilment.produced, 
+        backgroundColor: 'rgba(46,122,171,0.8)', 
+        borderColor: '#2E7AAB', 
+        borderWidth: 1 
+      },
+      { 
+        label: 'Shipped', 
+        data: crmData.fulfilment.shipped, 
+        backgroundColor: 'rgba(27,79,106,0.85)', 
+        borderColor: '#1B4F6A', 
+        borderWidth: 1 
+      }
+    ]);
+    
+    // Defect chart
+    this.chartService.createDoughnutChart(
+      'defectChart',
+      crmData.defects.categories,
+      crmData.defects.values,
+      ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5', '#B8D8EE']
+    );
+    
+    // Demand chart
+    this.chartService.createLineChart('demandChart', crmData.demand.months, [
+      { 
+        label: 'Production', 
+        data: crmData.demand.production, 
+        borderColor: '#2E7AAB' 
+      },
+      { 
+        label: 'Demand', 
+        data: crmData.demand.demand, 
+        borderColor: '#C9952E', 
+        borderDash: [5, 5] 
+      }
+    ]);
+  }
+}
+
+// ======================== APPLICATION CONTROLLER ========================
+
+/**
+ * Application Controller - Manages the entire application lifecycle
+ */
+class ProductionDisplayApp {
+  constructor() {
+    this.dataService = new ProductionDataService();
+    this.chartService = new ChartService();
+    this.uiRenderer = new UIRenderer(this.dataService, this.chartService);
+    
+    this.state = {
+      countdownSecs: 15 * 60,
+      intervalMins: 15,
+      initialised: {}
+    };
+    
+    this.countdownInterval = null;
+  }
+
+  // Initialize the dashboard
+  initDashboard() {
+    // Generate data
+    const hourlyData = this.dataService.getHourlyData();
+    const shiftTotals = this.dataService.calculateShiftTotals(hourlyData);
+    const hmiLog = this.dataService.initializeHMILog(8);
+    
+    // Generate production log records
+    const prodLogRecords = Array.from({ length: 10 }, () => this.dataService.generateHMIRecord());
+    
+    // Render UI
+    this.uiRenderer.updateDashboardKPIs(shiftTotals);
+    this.uiRenderer.renderSizeBreakdown(hourlyData);
+    this.uiRenderer.renderHMIFeed(hmiLog);
+    this.uiRenderer.renderProgressRings(shiftTotals);
+    this.uiRenderer.renderShiftTime();
+    this.uiRenderer.renderEfficiencyMeters();
+    this.uiRenderer.renderProductionLog(prodLogRecords);
+    this.uiRenderer.renderHourlyChart(hourlyData);
+  }
+
+  // Initialize hourly tab
+  initHourly() {
+    const hourlyData = this.dataService.getHourlyData();
+    const shiftTotals = this.dataService.calculateShiftTotals(hourlyData);
+    
+    this.uiRenderer.renderHourlyKPIs(hourlyData, shiftTotals);
+    this.uiRenderer.renderHourlyDetailChart(hourlyData);
+    this.uiRenderer.renderHourlySizeChart(hourlyData);
+    this.uiRenderer.renderHourlyTable(hourlyData);
+  }
+
+  // Initialize daily tab
+  initDaily() {
+    const dailyData = this.dataService.getDailyData();
+    
+    this.uiRenderer.renderDailyKPIs(dailyData);
+    this.uiRenderer.renderDailyChart(dailyData);
+    this.uiRenderer.renderDailyVarietyChart(dailyData);
+    this.uiRenderer.renderDailyTable(dailyData);
+  }
+
+  // Initialize weekly tab
+  initWeekly() {
+    const weeklyData = this.dataService.getWeeklyData();
+    
+    this.uiRenderer.renderWeeklyKPIs(weeklyData);
+    this.uiRenderer.renderWeeklyChart(weeklyData);
+    this.uiRenderer.renderDOWChart();
+    this.uiRenderer.renderWeeklyTable(weeklyData);
+  }
+
+  // Initialize monthly tab
+  initMonthly() {
+    const monthlyData = this.dataService.getMonthlyData();
+    const ytdTotals = this.dataService.calculateYTDTotals(monthlyData);
+    
+    this.uiRenderer.renderMonthlyKPIs(monthlyData, ytdTotals);
+    this.uiRenderer.renderMonthlyChart(monthlyData);
+    this.uiRenderer.renderMonthlySizeChart(monthlyData);
+    this.uiRenderer.renderMonthlyTable(monthlyData);
+  }
+
+  // Initialize CRM tab
+  initCRM() {
+    const crmData = this.dataService.generateCRMMetrics();
+    this.uiRenderer.renderCRMMetrics(crmData);
+  }
+
+  // Switch between tabs
+  switchTab(name) {
+    // Hide all main sections
+    document.querySelectorAll('.main').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+    
+    // Show selected tab
+    document.getElementById('tab-' + name).classList.add('active');
+    
+    // Update nav tab active state
+    const tabNames = ['dashboard', 'hourly', 'daily', 'weekly', 'monthly', 'crm', 'settings'];
+    const tabIndex = tabNames.indexOf(name);
+    if (tabIndex >= 0) {
+      document.querySelectorAll('.nav-tab')[tabIndex].classList.add('active');
+    }
+    
+    // Initialize tab if not already done
+    if (!this.state.initialised[name]) {
+      this.state.initialised[name] = true;
+      
+      switch (name) {
+        case 'hourly':
+          this.initHourly();
+          break;
+        case 'daily':
+          this.initDaily();
+          break;
+        case 'weekly':
+          this.initWeekly();
+          break;
+        case 'monthly':
+          this.initMonthly();
+          break;
+        case 'crm':
+          this.initCRM();
+          break;
+      }
+    }
+  }
+
+  // Update clock
+  updateClock() {
+    const now = new Date();
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    
+    let hours = now.getHours();
+    const minutes = now.getMinutes();
+    const seconds = now.getSeconds();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    
+    hours = hours % 12 || 12;
+    
+    const timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')} ${ampm}`;
+    const dateStr = `${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`;
+    
+    document.getElementById('clock').textContent = `${timeStr}  |  ${dateStr}`;
+  }
+
+  // Set update interval
+  setInterval() {
+    const mins = parseInt(document.getElementById('intervalSelect').value);
+    this.state.intervalMins = mins;
+    this.state.countdownSecs = mins * 60;
+    
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+    
+    this.startCountdown();
+  }
+
+  // Start countdown timer
+  startCountdown() {
+    this.countdownInterval = setInterval(() => {
+      this.state.countdownSecs--;
+      
+      if (this.state.countdownSecs <= 0) {
+        this.state.countdownSecs = this.state.intervalMins * 60;
+        this.refreshData();
+      }
+      
+      const minutes = Math.floor(this.state.countdownSecs / 60);
+      const seconds = this.state.countdownSecs % 60;
+      document.getElementById('countdown').textContent = 
+        `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }, 1000);
+  }
+
+  // Simulate HMI push
+  simulateHMI() {
+    const record = this.dataService.addHMIRecord();
+    
+    // Update HMI feed if dashboard is active
+    if (document.getElementById('tab-dashboard').classList.contains('active')) {
+      this.uiRenderer.renderHMIFeed(this.dataService.getHMILog());
+    }
+  }
+
+  // Refresh all data
+  refreshData() {
+    // Clear initialization state
+    this.state.initialised = {};
+    
+    // Clear data cache
+    this.dataService.clearCache();
+    
+    // Reinitialize dashboard if active
+    if (document.getElementById('tab-dashboard').classList.contains('active')) {
+      this.initDashboard();
+    }
+  }
+
+  // Start the application
+  start() {
+    // Initialize dashboard
+    this.initDashboard();
+    this.state.initialised['dashboard'] = true;
+    
+    // Start clock
+    this.updateClock();
+    setInterval(() => this.updateClock(), 1000);
+    
+    // Start countdown
+    this.startCountdown();
+    
+    // Setup nav tab click handlers
+    const tabNames = ['dashboard', 'hourly', 'daily', 'weekly', 'monthly', 'crm', 'settings'];
+    document.querySelectorAll('.nav-tab').forEach((tab, index) => {
+      tab.onclick = () => this.switchTab(tabNames[index]);
+    });
+  }
+}
+
+// ======================== BOOTSTRAP ========================
+
+// Create and start the application
+const app = new ProductionDisplayApp();
+app.start();
+</script>
+</body>
+</html>
