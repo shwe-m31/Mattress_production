@@ -6,6 +6,8 @@ public class ProductionStatusResponse {
     private String lastUpdateTime;
     private boolean simulatorActive;
     private long totalRecords;
+    private int currentProduction;
+    private int expectedProduction;
     
     public ProductionStatusResponse() {}
     
@@ -23,4 +25,10 @@ public class ProductionStatusResponse {
     
     public long getTotalRecords() { return totalRecords; }
     public void setTotalRecords(long totalRecords) { this.totalRecords = totalRecords; }
+    
+    public int getCurrentProduction() { return currentProduction; }
+    public void setCurrentProduction(int currentProduction) { this.currentProduction = currentProduction; }
+    
+    public int getExpectedProduction() { return expectedProduction; }
+    public void setExpectedProduction(int expectedProduction) { this.expectedProduction = expectedProduction; }
 }

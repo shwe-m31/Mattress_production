@@ -6,6 +6,9 @@ import com.peps.production.model.ProductionStatus;
 import com.peps.production.repository.ProductionRepository;
 import com.peps.production.service.DashboardService;
 import com.peps.production.service.ProductionSimulatorService;
+import com.peps.production.service.ProductionTimeService;
+import com.peps.production.service.ProductionSimulationService;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -23,25 +26,49 @@ public class ProductionController {
     private final ProductionRepository repository;
     private final DashboardService dashboardService;
     private final ProductionSimulatorService simulatorService;
+    private final ProductionTimeService timeService;
+    private final ProductionSimulationService simulationService;
+    
+    @Value("${production.daily-target:500}")
+    private int dailyTarget;
+    
+    @Value("${production.weekly-target:2500}")
+    private int weeklyTarget;
+    
+    @Value("${production.monthly-target:10000}")
+    private int monthlyTarget;
     
     public ProductionController(ProductionRepository repository, 
                                DashboardService dashboardService,
-                               ProductionSimulatorService simulatorService) {
+                               ProductionSimulatorService simulatorService,
+                               ProductionTimeService timeService,
+                               ProductionSimulationService simulationService) {
         this.repository = repository;
         this.dashboardService = dashboardService;
         this.simulatorService = simulatorService;
+        this.timeService = timeService;
+        this.simulationService = simulationService;
     }
     
     @GetMapping("/hourly")
     public ResponseEntity<HourlyProduction> getHourlyProduction() {
+        // Synchronize production before returning data
+        simulationService.synchronizeProduction();
+        
         LocalDateTime dayStart = LocalDate.now().atStartOfDay();
+        LocalDateTime now = LocalDateTime.now();
+        
+        // Only query up to current time, not future
         List<ProductionData> today = repository.findByStatusAndCompletionTimeBetween(
-            ProductionStatus.COMPLETED, dayStart, dayStart.plusDays(1));
+            ProductionStatus.COMPLETED, dayStart, now);
         
         HourlyProduction hourly = new HourlyProduction();
+        int currentHour = now.getHour();
+        
         for (ProductionData item : today) {
-            int hourIndex = item.getCompletionTime().getHour() - 6; // Start from 6 AM
-            if (hourIndex >= 0 && hourIndex < 24) {
+            int hourIndex = item.getCompletionTime().getHour();
+            // Only include hours that have already passed
+            if (hourIndex <= currentHour && hourIndex >= 0 && hourIndex < 24) {
                 boolean isSpring = item.getProductType().name().equals("SPRING");
                 if (isSpring) {
                     hourly.getSpring()[hourIndex] += item.getQuantity();
@@ -50,11 +77,14 @@ public class ProductionController {
                 }
             }
         }
+        
+        // Future hours remain zero (default)
         return ResponseEntity.ok(hourly);
     }
     
     @GetMapping("/daily")
     public ResponseEntity<List<DailyProduction>> getDailyProduction() {
+        // READ-ONLY: No synchronization needed for historical data
         List<DailyProduction> dailyData = new ArrayList<>();
         LocalDate today = LocalDate.now();
         
@@ -95,7 +125,9 @@ public class ProductionController {
             daily.setQueen(queen);
             daily.setDouble(doubleSize);
             daily.setSingle(single);
-            daily.setEfficiency(calculateEfficiency(spring + hypnos, 960)); // Assuming 960 daily target
+            
+            // Use centralized daily target for efficiency calculation
+            daily.setEfficiency(calculateEfficiency(spring + hypnos, dailyTarget));
             daily.setDowntime(calculateDowntime(dayData));
             
             dailyData.add(daily);
@@ -106,6 +138,7 @@ public class ProductionController {
     
     @GetMapping("/weekly")
     public ResponseEntity<List<WeeklyProduction>> getWeeklyProduction() {
+        // READ-ONLY: No synchronization needed for historical data
         List<WeeklyProduction> weeklyData = new ArrayList<>();
         LocalDate today = LocalDate.now();
         
@@ -134,8 +167,8 @@ public class ProductionController {
             weekly.setSpring(spring);
             weekly.setHypnos(hypnos);
             weekly.setTotal(spring + hypnos);
-            weekly.setTarget(4800); // Weekly target
-            weekly.setEfficiency(calculateEfficiency(spring + hypnos, 4800));
+            weekly.setTarget(weeklyTarget); // Use centralized weekly target
+            weekly.setEfficiency(calculateEfficiency(spring + hypnos, weeklyTarget));
             
             weeklyData.add(weekly);
         }
@@ -145,6 +178,7 @@ public class ProductionController {
     
     @GetMapping("/monthly")
     public ResponseEntity<List<MonthlyProduction>> getMonthlyProduction() {
+        // READ-ONLY: No synchronization needed for historical data
         List<MonthlyProduction> monthlyData = new ArrayList<>();
         LocalDate today = LocalDate.now();
         
@@ -183,7 +217,7 @@ public class ProductionController {
             monthly.setSpring(spring);
             monthly.setHypnos(hypnos);
             monthly.setTotal(spring + hypnos);
-            monthly.setTarget(20000); // Monthly target
+            monthly.setTarget(monthlyTarget); // Use centralized monthly target
             monthly.setKing(king);
             monthly.setQueen(queen);
             monthly.setDouble(doubleSize);
@@ -198,6 +232,7 @@ public class ProductionController {
     @GetMapping("/recent")
     public ResponseEntity<List<RecentProduction>> getRecentProduction(
             @RequestParam(defaultValue = "10") int limit) {
+        // READ-ONLY: No synchronization needed, just query existing data
         List<ProductionData> recent = repository.findTop10ByStatusOrderByCompletionTimeDesc(ProductionStatus.COMPLETED);
         return ResponseEntity.ok(recent.stream()
             .limit(limit)
@@ -216,12 +251,20 @@ public class ProductionController {
     
     @GetMapping("/status")
     public ResponseEntity<ProductionStatusResponse> getProductionStatus() {
+        // READ-ONLY: Just return current system status
         ProductionStatusResponse status = new ProductionStatusResponse();
         status.setConnectionStatus("Connected");
         status.setDataSource("Simulated HMI/PLC");
         status.setLastUpdateTime(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         status.setSimulatorActive(true);
         status.setTotalRecords((int) repository.count());
+        
+        // Add current production info
+        int currentProduction = simulationService.getCurrentProductionCount();
+        int expectedProduction = timeService.calculateExpectedProduction(LocalDateTime.now());
+        status.setCurrentProduction(currentProduction);
+        status.setExpectedProduction(expectedProduction);
+        
         return ResponseEntity.ok(status);
     }
     
@@ -232,6 +275,7 @@ public class ProductionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         
+        // READ-ONLY: No synchronization needed for historical queries
         LocalDateTime start = startDate != null ? startDate.atStartOfDay() : LocalDate.now().atStartOfDay();
         LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : LocalDateTime.now();
         
@@ -245,7 +289,7 @@ public class ProductionController {
                 .collect(Collectors.toList());
         }
         
-        if (shift != null && !shift.equals("current")) {
+        if (shift != null && !shift.equals("all")) {
             data = filterByShift(data, shift);
         }
         
@@ -253,11 +297,25 @@ public class ProductionController {
     }
     
     private List<ProductionData> filterByShift(List<ProductionData> data, String shift) {
-        int startHour, endHour;
+        // Use production window from timeService for "current" shift
+        if (shift == null || shift.equals("current")) {
+            int startHour = timeService.getStartTime().getHour();
+            int endHour = timeService.getEndTime().getHour();
+            
+            return data.stream()
+                .filter(item -> {
+                    int hour = item.getCompletionTime().getHour();
+                    return hour >= startHour && hour < endHour;
+                })
+                .collect(Collectors.toList());
+        }
+        
+        // For specific shifts, maintain compatibility with existing shift logic
+        int shiftStartHour, shiftEndHour;
         switch (shift) {
-            case "A": startHour = 6; endHour = 14; break;
-            case "B": startHour = 14; endHour = 22; break;
-            case "C": startHour = 22; endHour = 6; break;
+            case "A": shiftStartHour = 6; shiftEndHour = 14; break;
+            case "B": shiftStartHour = 14; shiftEndHour = 22; break;
+            case "C": shiftStartHour = 22; shiftEndHour = 6; break;
             default: return data;
         }
         
@@ -267,7 +325,7 @@ public class ProductionController {
                 if (shift.equals("C")) {
                     return hour >= 22 || hour < 6;
                 }
-                return hour >= startHour && hour < endHour;
+                return hour >= shiftStartHour && hour < shiftEndHour;
             })
             .collect(Collectors.toList());
     }
@@ -278,12 +336,25 @@ public class ProductionController {
     }
     
     private int calculateDowntime(List<ProductionData> dayData) {
-        // Simplified downtime calculation
-        // In a real system, this would be calculated from actual downtime records
+        // Improved downtime calculation based on production window
         if (dayData.isEmpty()) return 0;
         
-        int totalMinutes = 8 * 60; // 8-hour shift in minutes
-        int productionMinutes = dayData.size() * 5; // Assuming 5 minutes per unit
-        return Math.max(0, totalMinutes - productionMinutes);
+        // Use actual production window duration
+        long totalMinutes = timeService.getTotalProductionMinutes();
+        
+        // Calculate actual production time from cycle times
+        long productionMinutes = dayData.stream()
+            .filter(item -> item.getCycleTime() != null)
+            .mapToLong(item -> (long) item.getCycleTime().doubleValue())
+            .sum();
+        
+        // If no cycle times, estimate based on quantity
+        if (productionMinutes == 0) {
+            productionMinutes = dayData.stream()
+                .mapToInt(ProductionData::getQuantity)
+                .sum() * 5; // 5 minutes per unit as fallback
+        }
+        
+        return Math.max(0, (int) (totalMinutes - productionMinutes));
     }
 }

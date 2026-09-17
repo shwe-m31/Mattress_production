@@ -2,6 +2,8 @@ package com.peps.production.service;
 
 import com.peps.production.model.*;
 import com.peps.production.repository.ProductionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -11,60 +13,94 @@ import java.util.concurrent.ThreadLocalRandom;
 
 @Service
 public class ProductionSimulatorService implements CommandLineRunner {
+    private static final Logger logger = LoggerFactory.getLogger(ProductionSimulatorService.class);
+    
     private final ProductionRepository repository;
-    @Value("${simulation.seed-hours:10}") private int seedHours;
-    public ProductionSimulatorService(ProductionRepository repository) { this.repository = repository; }
+    private final ProductionTimeService timeService;
+    private final ProductionSimulationService simulationService;
+    
+    public ProductionSimulatorService(ProductionRepository repository, 
+                                      ProductionTimeService timeService,
+                                      ProductionSimulationService simulationService) {
+        this.repository = repository;
+        this.timeService = timeService;
+        this.simulationService = simulationService;
+    }
 
-    @Override public void run(String... args) {
-        LocalDateTime start = LocalDate.now().atStartOfDay();
-        if (repository.findByStatusAndCompletionTimeBetween(ProductionStatus.COMPLETED, start, start.plusDays(1)).isEmpty()) {
-            seedToday();
+    @Override
+    public void run(String... args) {
+        logger.info("Production Simulator Service starting...");
+        
+        // On startup, synchronize production with expected state
+        // This ensures restart persistence and proper initialization
+        try {
+            simulationService.synchronizeProduction();
+            logger.info("Initial production synchronization completed");
+        } catch (Exception e) {
+            logger.error("Error during initial production synchronization", e);
         }
     }
 
-    @Scheduled(fixedDelayString = "${simulation.interval:10000}", initialDelayString = "${simulation.initial-delay:10000}")
-    public void generateProductionEvent() { repository.save(newEvent(LocalDateTime.now())); }
-
-    private void seedToday() {
-        LocalDate today = LocalDate.now();
-        LocalDateTime now = LocalDateTime.now();
-        int endingHour = Math.max(9, Math.min(20, now.getHour()));
-        int startingHour = Math.max(9, endingHour - seedHours + 1);
-        for (int hour = startingHour; hour <= endingHour; hour++) {
-            int events = ThreadLocalRandom.current().nextInt(3, 7);
-            for (int event = 0; event < events; event++) {
-                LocalDateTime time = today.atTime(hour, ThreadLocalRandom.current().nextInt(0, 60));
-                if (time.isAfter(now)) time = now.minusMinutes(ThreadLocalRandom.current().nextInt(1, 10));
-                repository.save(newEvent(time));
+    /**
+     * Scheduled synchronization instead of random event generation
+     * This ensures production stays synchronized with expected time-based progression
+     */
+    @Scheduled(fixedDelayString = "${simulation.sync-interval:60000}", initialDelayString = "10000")
+    public void synchronizeProduction() {
+        try {
+            if (simulationService.needsSynchronization()) {
+                simulationService.synchronizeProduction();
+                logger.debug("Production synchronization completed");
             }
+        } catch (Exception e) {
+            logger.error("Error during production synchronization", e);
         }
     }
-
-    private ProductionData newEvent(LocalDateTime time) {
-        ThreadLocalRandom random = ThreadLocalRandom.current();
-        ProductType type = random.nextInt(100) < 58 ? ProductType.SPRING : ProductType.HYPNOS;
+    
+    /**
+     * Manual simulation endpoint for testing purposes
+     * This allows manual triggering of production events for testing
+     * Only creates events within valid time constraints
+     */
+    public ProductionData simulateManualProductionEvent(ProductType productType, String variety, 
+                                                         MattressSize size, int quantity, 
+                                                         String productionLine) {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDate today = now.toLocalDate();
         
-        String[] springVarieties = {"Bonnell", "Pocket", "Offset", "Continuous"};
-        String[] hypnosVarieties = {"Comfort", "Ortho", "Pillow Top", "Euro Top"};
-        String[] lines = {"SPRING-01", "SPRING-02", "HYPNOS-01", "HYPNOS-02"};
-        String[] statuses = {"COMPLETED", "COMPLETED", "COMPLETED", "IN_PROGRESS", "DELAYED"};
+        // Check if within production window
+        if (!timeService.isWithinProductionWindow(now)) {
+            throw new IllegalStateException("Cannot create production events outside production window");
+        }
         
-        String variety = type == ProductType.SPRING ? 
-            springVarieties[random.nextInt(springVarieties.length)] : 
-            hypnosVarieties[random.nextInt(hypnosVarieties.length)];
+        // Calculate realistic cycle time
+        double cycleTime = 3.5 + ThreadLocalRandom.current().nextDouble() * 2.0; // 3.5-5.5 minutes
+        LocalDateTime startTime = now.minusMinutes((long) cycleTime);
         
-        MattressSize[] sizes = MattressSize.values();
-        int quantity = random.nextInt(1, 3); // 1-2 units per event for historical data
+        // Ensure start time is within production window
+        LocalDateTime windowStart = timeService.getProductionWindowStart(today);
+        if (startTime.isBefore(windowStart)) {
+            startTime = windowStart;
+        }
         
-        // Use the simpler constructor and set additional fields
-        ProductionData event = new ProductionData(type, sizes[random.nextInt(sizes.length)], quantity, time);
-        event.setVariety(variety);
-        event.setProductionLine(lines[random.nextInt(lines.length)]);
-        event.setStartTime(time.minusMinutes(random.nextInt(3, 6)));
-        event.setCycleTime(random.nextDouble(3.5, 5.5));
-        event.setStatus(ProductionStatus.valueOf(statuses[random.nextInt(statuses.length)]));
-        event.setProductionTime(time);
+        ProductionData event = new ProductionData(
+            productType,
+            variety,
+            size,
+            quantity,
+            productionLine,
+            startTime,
+            now,
+            cycleTime,
+            ProductionStatus.COMPLETED
+        );
         
-        return event;
+        event.setProductionTime(now);
+        
+        ProductionData saved = repository.save(event);
+        logger.info("Manual production event created: {} units of {} {}", 
+            quantity, productType, size);
+        
+        return saved;
     }
 }

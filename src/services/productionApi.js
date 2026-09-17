@@ -35,7 +35,7 @@ async function apiCall(endpoint, options = {}) {
  * Returns: production totals, size breakdown, hourly data, recent items
  */
 export async function getDashboard() {
-  return apiCall('/dashboard');
+  return apiCall('/production/dashboard');
 }
 
 /**
