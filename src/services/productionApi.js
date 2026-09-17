@@ -132,6 +132,14 @@ export async function getProductionHistory(filters = {}) {
   return apiCall(`/production/history?${params}`);
 }
 
+/**
+ * Get simulation status
+ * Returns: simulation enabled status, time multiplier, current simulated time
+ */
+export async function getSimulationStatus() {
+  return apiCall('/production/simulation/status');
+}
+
 // eslint-disable-next-line import/no-anonymous-default-export
 export default {
   getDashboard,
@@ -146,4 +154,5 @@ export default {
   getSimulatorStatus,
   triggerSimulatorEvent,
   getProductionHistory,
+  getSimulationStatus,
 };

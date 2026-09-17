@@ -17,6 +17,7 @@ public class ProductionSimulationService {
     
     private final ProductionRepository repository;
     private final ProductionTimeService timeService;
+    private final SimulationClockService simulationClockService;
     
     // Deterministic random for consistent product distribution
     private final Random deterministicRandom = new Random(42); // Fixed seed for consistency
@@ -37,9 +38,11 @@ public class ProductionSimulationService {
     private static final double MAX_CYCLE_TIME = 5.5;
     
     public ProductionSimulationService(ProductionRepository repository, 
-                                       ProductionTimeService timeService) {
+                                       ProductionTimeService timeService,
+                                       SimulationClockService simulationClockService) {
         this.repository = repository;
         this.timeService = timeService;
+        this.simulationClockService = simulationClockService;
     }
     
     /**
@@ -48,7 +51,7 @@ public class ProductionSimulationService {
      */
     @Transactional
     public void synchronizeProduction() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = timeService.getCurrentTime();
         LocalDate today = now.toLocalDate();
         
         LocalDateTime dayStart = today.atStartOfDay();
@@ -182,7 +185,8 @@ public class ProductionSimulationService {
             startTime,
             completionTime,
             cycleTime,
-            ProductionStatus.COMPLETED
+            ProductionStatus.COMPLETED,
+            "SIMULATOR"
         );
         
         event.setProductionTime(completionTime);
@@ -194,7 +198,7 @@ public class ProductionSimulationService {
      * Get current production count for today
      */
     public int getCurrentProductionCount() {
-        LocalDate today = LocalDate.now();
+        LocalDate today = timeService.getCurrentDate();
         LocalDateTime dayStart = today.atStartOfDay();
         LocalDateTime dayEnd = today.atTime(23, 59, 59);
         
@@ -210,7 +214,7 @@ public class ProductionSimulationService {
      * Check if production synchronization is needed
      */
     public boolean needsSynchronization() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = timeService.getCurrentTime();
         int actualProduction = getCurrentProductionCount();
         int expectedProduction = timeService.calculateExpectedProduction(now);
         

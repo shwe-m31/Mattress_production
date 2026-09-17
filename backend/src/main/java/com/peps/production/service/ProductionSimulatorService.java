@@ -18,22 +18,32 @@ public class ProductionSimulatorService implements CommandLineRunner {
     private final ProductionRepository repository;
     private final ProductionTimeService timeService;
     private final ProductionSimulationService simulationService;
+    private final HistoricalSeedingService historicalSeedingService;
     
     public ProductionSimulatorService(ProductionRepository repository, 
                                       ProductionTimeService timeService,
-                                      ProductionSimulationService simulationService) {
+                                      ProductionSimulationService simulationService,
+                                      HistoricalSeedingService historicalSeedingService) {
         this.repository = repository;
         this.timeService = timeService;
         this.simulationService = simulationService;
+        this.historicalSeedingService = historicalSeedingService;
     }
 
     @Override
     public void run(String... args) {
         logger.info("Production Simulator Service starting...");
         
-        // On startup, synchronize production with expected state
-        // This ensures restart persistence and proper initialization
         try {
+            // First, seed historical data if database is empty
+            if (historicalSeedingService.needsSeeding()) {
+                logger.info("Seeding historical production data...");
+                historicalSeedingService.seedHistoricalData();
+                logger.info("Historical data seeding completed");
+            }
+            
+            // Then synchronize production with expected state
+            // This ensures restart persistence and proper initialization
             simulationService.synchronizeProduction();
             logger.info("Initial production synchronization completed");
         } catch (Exception e) {
@@ -65,7 +75,7 @@ public class ProductionSimulatorService implements CommandLineRunner {
     public ProductionData simulateManualProductionEvent(ProductType productType, String variety, 
                                                          MattressSize size, int quantity, 
                                                          String productionLine) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = timeService.getCurrentTime();
         LocalDate today = now.toLocalDate();
         
         // Check if within production window
@@ -92,7 +102,8 @@ public class ProductionSimulatorService implements CommandLineRunner {
             startTime,
             now,
             cycleTime,
-            ProductionStatus.COMPLETED
+            ProductionStatus.COMPLETED,
+            "SIMULATOR"
         );
         
         event.setProductionTime(now);

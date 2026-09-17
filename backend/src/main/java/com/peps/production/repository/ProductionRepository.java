@@ -27,4 +27,24 @@ public interface ProductionRepository extends JpaRepository<ProductionData, Long
                                                                     @Param("productType") ProductType productType,
                                                                     @Param("start") LocalDateTime start,
                                                                     @Param("end") LocalDateTime end);
+    
+    /**
+     * Check if any production data exists for a specific date
+     * Used for historical seeding validation
+     */
+    @Query("SELECT COUNT(p) > 0 FROM ProductionData p WHERE p.completionTime BETWEEN :start AND :end")
+    boolean existsByCompletionTimeBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    
+    /**
+     * Get count of production records for a specific date
+     */
+    @Query("SELECT COUNT(p) FROM ProductionData p WHERE p.completionTime BETWEEN :start AND :end")
+    long countByCompletionTimeBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    
+    /**
+     * Get the latest completion time for a specific date
+     * Used for synchronization validation
+     */
+    @Query("SELECT MAX(p.completionTime) FROM ProductionData p WHERE p.completionTime BETWEEN :start AND :end")
+    LocalDateTime findMaxCompletionTimeBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

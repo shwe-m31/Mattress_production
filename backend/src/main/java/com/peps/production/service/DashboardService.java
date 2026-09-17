@@ -41,8 +41,8 @@ public class DashboardService {
             logger.error("Error during production synchronization in dashboard", e);
         }
         
-        LocalDateTime dayStart = LocalDate.now().atStartOfDay();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime dayStart = timeService.getCurrentDate().atStartOfDay();
+        LocalDateTime now = timeService.getCurrentTime();
         
         // Only get production up to current time, not future
         LocalDateTime queryEndTime = now;

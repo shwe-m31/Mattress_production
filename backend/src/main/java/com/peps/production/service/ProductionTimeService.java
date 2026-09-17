@@ -22,11 +22,33 @@ public class ProductionTimeService {
     private LocalTime startTime;
     private LocalTime endTime;
     
+    private final SimulationClockService simulationClockService;
+    
+    public ProductionTimeService(SimulationClockService simulationClockService) {
+        this.simulationClockService = simulationClockService;
+    }
+    
     @PostConstruct
     public void init() {
         // Initialize times from configuration after dependency injection
         this.startTime = LocalTime.parse(productionStartTime);
         this.endTime = LocalTime.parse(productionEndTime);
+        // Initialize simulation clock
+        simulationClockService.initialize();
+    }
+    
+    /**
+     * Get current time (real or simulated depending on configuration)
+     */
+    public LocalDateTime getCurrentTime() {
+        return simulationClockService.getCurrentSimulatedTime();
+    }
+    
+    /**
+     * Get current date (real or simulated depending on configuration)
+     */
+    public LocalDate getCurrentDate() {
+        return simulationClockService.getCurrentSimulatedDate();
     }
     
     /**

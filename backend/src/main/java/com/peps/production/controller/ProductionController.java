@@ -8,6 +8,8 @@ import com.peps.production.service.DashboardService;
 import com.peps.production.service.ProductionSimulatorService;
 import com.peps.production.service.ProductionTimeService;
 import com.peps.production.service.ProductionSimulationService;
+import com.peps.production.service.SimulationClockService;
+import com.peps.production.service.HistoricalSeedingService;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +30,8 @@ public class ProductionController {
     private final ProductionSimulatorService simulatorService;
     private final ProductionTimeService timeService;
     private final ProductionSimulationService simulationService;
+    private final SimulationClockService simulationClockService;
+    private final HistoricalSeedingService historicalSeedingService;
     
     @Value("${production.daily-target:500}")
     private int dailyTarget;
@@ -42,12 +46,16 @@ public class ProductionController {
                                DashboardService dashboardService,
                                ProductionSimulatorService simulatorService,
                                ProductionTimeService timeService,
-                               ProductionSimulationService simulationService) {
+                               ProductionSimulationService simulationService,
+                               SimulationClockService simulationClockService,
+                               HistoricalSeedingService historicalSeedingService) {
         this.repository = repository;
         this.dashboardService = dashboardService;
         this.simulatorService = simulatorService;
         this.timeService = timeService;
         this.simulationService = simulationService;
+        this.simulationClockService = simulationClockService;
+        this.historicalSeedingService = historicalSeedingService;
     }
     
     @GetMapping("/hourly")
@@ -55,8 +63,8 @@ public class ProductionController {
         // Synchronize production before returning data
         simulationService.synchronizeProduction();
         
-        LocalDateTime dayStart = LocalDate.now().atStartOfDay();
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime dayStart = timeService.getCurrentDate().atStartOfDay();
+        LocalDateTime now = timeService.getCurrentTime();
         
         // Only query up to current time, not future
         List<ProductionData> today = repository.findByStatusAndCompletionTimeBetween(
@@ -86,7 +94,7 @@ public class ProductionController {
     public ResponseEntity<List<DailyProduction>> getDailyProduction() {
         // READ-ONLY: No synchronization needed for historical data
         List<DailyProduction> dailyData = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = timeService.getCurrentDate();
         
         for (int i = 13; i >= 0; i--) {
             LocalDate date = today.minusDays(i);
@@ -140,7 +148,7 @@ public class ProductionController {
     public ResponseEntity<List<WeeklyProduction>> getWeeklyProduction() {
         // READ-ONLY: No synchronization needed for historical data
         List<WeeklyProduction> weeklyData = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = timeService.getCurrentDate();
         
         for (int i = 7; i >= 0; i--) {
             LocalDate weekStart = today.minusWeeks(i).with(java.time.DayOfWeek.MONDAY);
@@ -180,7 +188,7 @@ public class ProductionController {
     public ResponseEntity<List<MonthlyProduction>> getMonthlyProduction() {
         // READ-ONLY: No synchronization needed for historical data
         List<MonthlyProduction> monthlyData = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+        LocalDate today = timeService.getCurrentDate();
         
         for (int i = 11; i >= 0; i--) {
             LocalDate monthStart = today.minusMonths(i).withDayOfMonth(1);
@@ -255,15 +263,29 @@ public class ProductionController {
         ProductionStatusResponse status = new ProductionStatusResponse();
         status.setConnectionStatus("Connected");
         status.setDataSource("Simulated HMI/PLC");
-        status.setLastUpdateTime(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        status.setLastUpdateTime(timeService.getCurrentTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         status.setSimulatorActive(true);
         status.setTotalRecords((int) repository.count());
         
         // Add current production info
         int currentProduction = simulationService.getCurrentProductionCount();
-        int expectedProduction = timeService.calculateExpectedProduction(LocalDateTime.now());
+        int expectedProduction = timeService.calculateExpectedProduction(timeService.getCurrentTime());
         status.setCurrentProduction(currentProduction);
         status.setExpectedProduction(expectedProduction);
+        
+        return ResponseEntity.ok(status);
+    }
+    
+    @GetMapping("/simulation/status")
+    public ResponseEntity<Map<String, Object>> getSimulationStatus() {
+        Map<String, Object> status = new HashMap<>();
+        status.put("enabled", simulationClockService.isSimulationEnabled());
+        status.put("timeMultiplier", simulationClockService.getTimeMultiplier());
+        status.put("currentTime", timeService.getCurrentTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        status.put("currentDate", timeService.getCurrentDate().toString());
+        status.put("realTime", simulationClockService.getRealTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        status.put("historyDays", historicalSeedingService.getHistoryDays());
+        status.put("totalRecords", repository.count());
         
         return ResponseEntity.ok(status);
     }
@@ -276,8 +298,8 @@ public class ProductionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
         
         // READ-ONLY: No synchronization needed for historical queries
-        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : LocalDate.now().atStartOfDay();
-        LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : LocalDateTime.now();
+        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : timeService.getCurrentDate().atStartOfDay();
+        LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : timeService.getCurrentTime();
         
         List<ProductionData> data = repository.findByStatusAndCompletionTimeBetween(
             ProductionStatus.COMPLETED, start, end);

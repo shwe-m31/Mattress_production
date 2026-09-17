@@ -35,6 +35,11 @@ function App() {
   const [shiftTime, setShiftTime] = useState({ endTime: '--:--', remaining: '--' });
   const [simulatorStatus, setSimulatorStatus] = useState(null);
   
+  // Historical data state
+  const [dailyData, setDailyData] = useState([]);
+  const [weeklyData, setWeeklyData] = useState([]);
+  const [monthlyData, setMonthlyData] = useState([]);
+  
   // Chart refs
   const hourlyChartRef = useRef(null);
   const chartsRef = useRef({});
@@ -298,6 +303,36 @@ function App() {
     }
   };
   
+  // Fetch daily production data
+  const fetchDailyData = async () => {
+    try {
+      const data = await productionApi.getDailyProduction();
+      setDailyData(data);
+    } catch (err) {
+      console.error('Error fetching daily data:', err);
+    }
+  };
+  
+  // Fetch weekly production data
+  const fetchWeeklyData = async () => {
+    try {
+      const data = await productionApi.getWeeklyProduction();
+      setWeeklyData(data);
+    } catch (err) {
+      console.error('Error fetching weekly data:', err);
+    }
+  };
+  
+  // Fetch monthly production data
+  const fetchMonthlyData = async () => {
+    try {
+      const data = await productionApi.getMonthlyProduction();
+      setMonthlyData(data);
+    } catch (err) {
+      console.error('Error fetching monthly data:', err);
+    }
+  };
+  
   // Make ring SVG
   const makeRing = (label, pct, color) => {
     pct = Math.min(100, pct);
@@ -326,6 +361,9 @@ function App() {
     initDashboard();
     updateClock();
     fetchSimulatorStatus();
+    fetchDailyData();
+    fetchWeeklyData();
+    fetchMonthlyData();
     
     const clockInterval = setInterval(updateClock, 1000);
     
@@ -632,7 +670,110 @@ function App() {
         <div key={tab} className={`main ${activeTab === tab ? 'active' : ''}`} id={`tab-${tab}`}>
           <div className="card">
             <div className="card-body">
-              {tab === 'settings' ? (
+              {tab === 'hourly' ? (
+                <div>
+                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
+                    Hourly Production — Coming Soon
+                  </div>
+                  <div style={{textAlign: 'center', color: 'var(--text-muted)', padding: '1rem'}}>
+                    Use the Dashboard tab for current hourly production data
+                  </div>
+                </div>
+              ) : tab === 'daily' ? (
+                <div>
+                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
+                    Daily Production — Last 14 Days
+                  </div>
+                  <div style={{padding: '1rem'}}>
+                    <table className="prod-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Spring</th>
+                          <th>Hypnos</th>
+                          <th>Total</th>
+                          <th>Efficiency</th>
+                          <th>Downtime</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dailyData.length > 0 ? dailyData.map((day, idx) => (
+                          <tr key={idx}>
+                            <td>{day.date}</td>
+                            <td className="num">{day.spring}</td>
+                            <td className="num">{day.hypnos}</td>
+                            <td className="num">{day.total}</td>
+                            <td className="num">{day.efficiency}%</td>
+                            <td className="num">{day.downtime} min</td>
+                          </tr>
+                        )) : <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading daily data...</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : tab === 'weekly' ? (
+                <div>
+                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
+                    Weekly Production — Last 8 Weeks
+                  </div>
+                  <div style={{padding: '1rem'}}>
+                    <table className="prod-table">
+                      <thead>
+                        <tr>
+                          <th>Week</th>
+                          <th>Spring</th>
+                          <th>Hypnos</th>
+                          <th>Total</th>
+                          <th>Target</th>
+                          <th>Efficiency</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {weeklyData.length > 0 ? weeklyData.map((week, idx) => (
+                          <tr key={idx}>
+                            <td>{week.week}</td>
+                            <td className="num">{week.spring}</td>
+                            <td className="num">{week.hypnos}</td>
+                            <td className="num">{week.total}</td>
+                            <td className="num">{week.target}</td>
+                            <td className="num">{week.efficiency}%</td>
+                          </tr>
+                        )) : <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading weekly data...</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : tab === 'monthly' ? (
+                <div>
+                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
+                    Monthly Production — Last 12 Months
+                  </div>
+                  <div style={{padding: '1rem'}}>
+                    <table className="prod-table">
+                      <thead>
+                        <tr>
+                          <th>Month</th>
+                          <th>Spring</th>
+                          <th>Hypnos</th>
+                          <th>Total</th>
+                          <th>Target</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {monthlyData.length > 0 ? monthlyData.map((month, idx) => (
+                          <tr key={idx}>
+                            <td>{month.month}</td>
+                            <td className="num">{month.spring}</td>
+                            <td className="num">{month.hypnos}</td>
+                            <td className="num">{month.total}</td>
+                            <td className="num">{month.target}</td>
+                          </tr>
+                        )) : <tr><td colSpan="5" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading monthly data...</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : tab === 'settings' ? (
                 <div className="settings-panel">
                   <div className="settings-section">
                     <div className="settings-title">Simulator Controls</div>
