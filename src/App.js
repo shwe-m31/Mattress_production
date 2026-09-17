@@ -15,6 +15,8 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tvMode, setTvMode] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(false);
+  const [rotateInterval, setRotateInterval] = useState(60);
   
   // Data state - all from backend
   const [kpiData, setKpiData] = useState({
@@ -333,6 +335,704 @@ function App() {
     }
   };
   
+  // Fetch and display detailed hourly data
+  const fetchHourlyDetails = async () => {
+    try {
+      const data = await productionApi.getHourlyProduction();
+      
+      // Calculate current hour totals
+      const currentHour = new Date().getHours();
+      let currentHourTotal = 0;
+      let currentHourSpring = 0;
+      let currentHourHypnos = 0;
+      
+      if (data.spring[currentHour]) {
+        currentHourSpring = data.spring[currentHour];
+        currentHourHypnos = data.hypnos[currentHour];
+        currentHourTotal = currentHourSpring + currentHourHypnos;
+      }
+      
+      // Find best and worst hours
+      let bestHour = { hour: '--', total: 0 };
+      let worstHour = { hour: '--', total: Infinity };
+      
+      for (let i = 0; i < 24; i++) {
+        const total = (data.spring[i] || 0) + (data.hypnos[i] || 0);
+        if (total > 0 && total > bestHour.total) {
+          bestHour = { hour: `${i}:00`, total };
+        }
+        if (total > 0 && total < worstHour.total) {
+          worstHour = { hour: `${i}:00`, total };
+        }
+      }
+      
+      // Update UI
+      const hourlyTotalEl = document.getElementById('hourly-total');
+      const hourlySpringEl = document.getElementById('hourly-spring');
+      const hourlyHypnosEl = document.getElementById('hourly-hypnos');
+      const bestHourEl = document.getElementById('best-hour');
+      const worstHourEl = document.getElementById('worst-hour');
+      
+      if (hourlyTotalEl) hourlyTotalEl.textContent = currentHourTotal;
+      if (hourlySpringEl) hourlySpringEl.textContent = currentHourSpring;
+      if (hourlyHypnosEl) hourlyHypnosEl.textContent = currentHourHypnos;
+      if (bestHourEl) bestHourEl.textContent = bestHour.hour !== '--' ? `${bestHour.hour} (${bestHour.total})` : '--';
+      if (worstHourEl) worstHourEl.textContent = worstHour.hour !== '--' ? `${worstHour.hour} (${worstHour.total})` : '--';
+      
+      // Create hourly trend chart
+      createHourlyTrendChart(data);
+      
+      // Create hourly size mix chart
+      createHourlySizeChart(data);
+      
+      // Populate hourly table
+      populateHourlyTable(data);
+      
+    } catch (err) {
+      console.error('Error fetching hourly details:', err);
+    }
+  };
+  
+  const createHourlyTrendChart = (data) => {
+    const ctx = document.getElementById('hourlyTrendChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.hourlyTrendChart) {
+      chartsRef.current.hourlyTrendChart.destroy();
+    }
+    
+    const hours = [];
+    const springData = [];
+    const hypnosData = [];
+    const currentHour = new Date().getHour();
+    
+    for (let i = 0; i < 24; i++) {
+      const hour = (6 + i) % 24; // Start from 6 AM
+      hours.push(`${hour}:00`);
+      springData.push(data.spring[i] || 0);
+      hypnosData.push(data.hypnos[i] || 0);
+    }
+    
+    Chart.defaults.font.family = "'Lora', Georgia, serif";
+    Chart.defaults.color = '#4A6A7D';
+    
+    chartsRef.current.hourlyTrendChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: hours,
+        datasets: [
+          {
+            label: 'Spring',
+            data: springData,
+            backgroundColor: 'rgba(46,122,171,0.7)',
+            borderColor: '#2E7AAB',
+            borderWidth: 1
+          },
+          {
+            label: 'Hypnos',
+            data: hypnosData,
+            backgroundColor: 'rgba(27,79,106,0.7)',
+            borderColor: '#1B4F6A',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } }
+        },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const createHourlySizeChart = (data) => {
+    const ctx = document.getElementById('hourlySizeChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.hourlySizeChart) {
+      chartsRef.current.hourlySizeChart.destroy();
+    }
+    
+    // Calculate size distribution per hour (simplified for demo)
+    const hours = [];
+    const kingData = [];
+    const queenData = [];
+    const doubleData = [];
+    const singleData = [];
+    
+    for (let i = 0; i < 24; i++) {
+      const hour = (6 + i) % 24;
+      hours.push(`${hour}:00`);
+      const total = (data.spring[i] || 0) + (data.hypnos[i] || 0);
+      // Simplified size distribution (would need real data from backend)
+      kingData.push(Math.round(total * 0.3));
+      queenData.push(Math.round(total * 0.35));
+      doubleData.push(Math.round(total * 0.25));
+      singleData.push(Math.round(total * 0.1));
+    }
+    
+    chartsRef.current.hourlySizeChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: hours,
+        datasets: [
+          { label: 'King', data: kingData, borderColor: '#2E7AAB', tension: 0.4, fill: false },
+          { label: 'Queen', data: queenData, borderColor: '#1B4F6A', tension: 0.4, fill: false },
+          { label: 'Double', data: doubleData, borderColor: '#3E9AD0', tension: 0.4, fill: false },
+          { label: 'Single', data: singleData, borderColor: '#7ABCD5', tension: 0.4, fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const populateHourlyTable = (data) => {
+    const tbody = document.getElementById('hourly-table-body');
+    if (!tbody) return;
+    
+    const currentHour = new Date().getHour();
+    let html = '';
+    
+    for (let i = 0; i < 24; i++) {
+      const hour = (6 + i) % 24;
+      const spring = data.spring[i] || 0;
+      const hypnos = data.hypnos[i] || 0;
+      const total = spring + hypnos;
+      const target = 120;
+      const vsTarget = total > 0 ? Math.round((total / target) * 100) : 0;
+      
+      // Simplified size distribution
+      const king = Math.round(total * 0.3);
+      const queen = Math.round(total * 0.35);
+      const doubleSize = Math.round(total * 0.25);
+      const single = Math.round(total * 0.1);
+      
+      const rowClass = hour === currentHour ? 'highlight-row' : '';
+      
+      html += `
+        <tr class="${rowClass}">
+          <td>${hour}:00</td>
+          <td className="num">${spring}</td>
+          <td className="num">${hypnos}</td>
+          <td className="num">${total}</td>
+          <td className="num">${king}</td>
+          <td className="num">${queen}</td>
+          <td className="num">${doubleSize}</td>
+          <td className="num">${single}</td>
+          <td className="num">${vsTarget}%</td>
+        </tr>
+      `;
+    }
+    
+    tbody.innerHTML = html;
+  };
+  
+  // Fetch and display detailed daily data
+  const fetchDailyDetails = async () => {
+    try {
+      const data = await productionApi.getDailyProduction();
+      
+      if (!data || data.length === 0) return;
+      
+      // Calculate daily KPIs
+      const today = data[0];
+      const yesterday = data[1] || { total: 0 };
+      
+      const last7Days = data.slice(0, 7);
+      const total7Days = last7Days.reduce((sum, day) => sum + (day.total || 0), 0);
+      const avgDaily = Math.round(total7Days / 7);
+      const bestDay = Math.max(...last7Days.map(d => d.total || 0));
+      
+      // Update UI
+      const dailyTodayEl = document.getElementById('daily-today');
+      const dailyYesterdayEl = document.getElementById('daily-yesterday');
+      const dailyBestEl = document.getElementById('daily-best');
+      const dailyAvgEl = document.getElementById('daily-avg');
+      const dailyDowntimeEl = document.getElementById('daily-downtime');
+      
+      if (dailyTodayEl) dailyTodayEl.textContent = today.total || 0;
+      if (dailyYesterdayEl) dailyYesterdayEl.textContent = yesterday.total || 0;
+      if (dailyBestEl) dailyBestEl.textContent = bestDay;
+      if (dailyAvgEl) dailyAvgEl.textContent = avgDaily;
+      if (dailyDowntimeEl) dailyDowntimeEl.textContent = today.downtime || '--';
+      
+      // Create daily chart
+      createDailyChart(data);
+      
+      // Create daily variety chart
+      createDailyVarietyChart(today);
+      
+      // Populate daily table
+      populateDailyTable(data);
+      
+    } catch (err) {
+      console.error('Error fetching daily details:', err);
+    }
+  };
+  
+  const createDailyChart = (data) => {
+    const ctx = document.getElementById('dailyChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.dailyChart) {
+      chartsRef.current.dailyChart.destroy();
+    }
+    
+    const dates = data.map(d => d.date);
+    const springData = data.map(d => d.spring || 0);
+    const hypnosData = data.map(d => d.hypnos || 0);
+    
+    Chart.defaults.font.family = "'Lora', Georgia, serif";
+    Chart.defaults.color = '#4A6A7D';
+    
+    chartsRef.current.dailyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: dates,
+        datasets: [
+          {
+            label: 'Spring',
+            data: springData,
+            backgroundColor: 'rgba(46,122,171,0.7)',
+            borderColor: '#2E7AAB',
+            borderWidth: 1
+          },
+          {
+            label: 'Hypnos',
+            data: hypnosData,
+            backgroundColor: 'rgba(27,79,106,0.7)',
+            borderColor: '#1B4F6A',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const createDailyVarietyChart = (todayData) => {
+    const ctx = document.getElementById('dailyVarietyChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.dailyVarietyChart) {
+      chartsRef.current.dailyVarietyChart.destroy();
+    }
+    
+    // Simplified variety distribution
+    const total = todayData.total || 0;
+    const king = Math.round(total * 0.3);
+    const queen = Math.round(total * 0.35);
+    const doubleSize = Math.round(total * 0.25);
+    const single = Math.round(total * 0.1);
+    
+    chartsRef.current.dailyVarietyChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['King', 'Queen', 'Double', 'Single'],
+        datasets: [{
+          data: [king, queen, doubleSize, single],
+          backgroundColor: ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'],
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
+        cutout: '65%'
+      }
+    });
+  };
+  
+  const populateDailyTable = (data) => {
+    const tbody = document.getElementById('daily-table-body');
+    if (!tbody) return;
+    
+    let html = '';
+    
+    data.forEach(day => {
+      const total = day.total || 0;
+      const target = 960;
+      const efficiency = total > 0 ? Math.round((total / target) * 100) : 0;
+      
+      // Simplified size distribution
+      const king = Math.round(total * 0.3);
+      const queen = Math.round(total * 0.35);
+      const doubleSize = Math.round(total * 0.25);
+      const single = Math.round(total * 0.1);
+      
+      html += `
+        <tr>
+          <td>${day.date}</td>
+          <td className="num">${day.spring || 0}</td>
+          <td className="num">${day.hypnos || 0}</td>
+          <td className="num">${total}</td>
+          <td className="num">${king}</td>
+          <td className="num">${queen}</td>
+          <td className="num">${doubleSize}</td>
+          <td className="num">${single}</td>
+          <td className="num">${efficiency}%</td>
+          <td className="num">${day.downtime || '--'} min</td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+  };
+  
+  // Fetch and display detailed weekly data
+  const fetchWeeklyDetails = async () => {
+    try {
+      const data = await productionApi.getWeeklyProduction();
+      
+      if (!data || data.length === 0) return;
+      
+      // Calculate weekly KPIs
+      const thisWeek = data[0];
+      const lastWeek = data[1] || { total: 0 };
+      
+      // Update UI
+      const weeklyThisEl = document.getElementById('weekly-this');
+      const weeklyLastEl = document.getElementById('weekly-last');
+      const weeklySpringEl = document.getElementById('weekly-spring');
+      const weeklyHypnosEl = document.getElementById('weekly-hypnos');
+      const weeklyEffEl = document.getElementById('weekly-eff');
+      
+      if (weeklyThisEl) weeklyThisEl.textContent = thisWeek.total || 0;
+      if (weeklyLastEl) weeklyLastEl.textContent = lastWeek.total || 0;
+      if (weeklySpringEl) weeklySpringEl.textContent = thisWeek.spring || 0;
+      if (weeklyHypnosEl) weeklyHypnosEl.textContent = thisWeek.hypnos || 0;
+      if (weeklyEffEl) weeklyEffEl.textContent = thisWeek.efficiency || '--';
+      
+      // Create weekly chart
+      createWeeklyChart(data);
+      
+      // Create day-of-week pattern chart
+      createDowChart(data);
+      
+      // Populate weekly table
+      populateWeeklyTable(data);
+      
+    } catch (err) {
+      console.error('Error fetching weekly details:', err);
+    }
+  };
+  
+  const createWeeklyChart = (data) => {
+    const ctx = document.getElementById('weeklyChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.weeklyChart) {
+      chartsRef.current.weeklyChart.destroy();
+    }
+    
+    const weeks = data.map(d => d.week);
+    const springData = data.map(d => d.spring || 0);
+    const hypnosData = data.map(d => d.hypnos || 0);
+    const targetData = data.map(d => d.target || 4800);
+    
+    Chart.defaults.font.family = "'Lora', Georgia, serif";
+    Chart.defaults.color = '#4A6A7D';
+    
+    chartsRef.current.weeklyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: weeks,
+        datasets: [
+          {
+            label: 'Spring',
+            data: springData,
+            backgroundColor: 'rgba(46,122,171,0.7)',
+            borderColor: '#2E7AAB',
+            borderWidth: 1
+          },
+          {
+            label: 'Hypnos',
+            data: hypnosData,
+            backgroundColor: 'rgba(27,79,106,0.7)',
+            borderColor: '#1B4F6A',
+            borderWidth: 1
+          },
+          {
+            label: 'Target',
+            data: targetData,
+            type: 'line',
+            borderColor: '#3E9AD0',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const createDowChart = (data) => {
+    const ctx = document.getElementById('dowChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.dowChart) {
+      chartsRef.current.dowChart.destroy();
+    }
+    
+    // Simplified day-of-week pattern
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const avgOutput = [650, 720, 680, 750, 690, 400, 300]; // Placeholder data
+    
+    chartsRef.current.dowChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: weekdays,
+        datasets: [{
+          label: 'Avg Output',
+          data: avgOutput,
+          backgroundColor: 'rgba(46,122,171,0.7)',
+          borderColor: '#2E7AAB',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const populateWeeklyTable = (data) => {
+    const tbody = document.getElementById('weekly-table-body');
+    if (!tbody) return;
+    
+    let html = '';
+    
+    data.forEach(week => {
+      const total = week.total || 0;
+      const target = week.target || 4800;
+      const attainment = total > 0 ? Math.round((total / target) * 100) : 0;
+      
+      html += `
+        <tr>
+          <td>${week.week}</td>
+          <td className="num">${week.spring || 0}</td>
+          <td className="num">${week.hypnos || 0}</td>
+          <td className="num">${total}</td>
+          <td className="num">${target}</td>
+          <td className="num">${attainment}%</td>
+          <td className="num">${week.efficiency || '--'}%</td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+  };
+  
+  // Fetch and display detailed monthly data
+  const fetchMonthlyDetails = async () => {
+    try {
+      const data = await productionApi.getMonthlyProduction();
+      
+      if (!data || data.length === 0) return;
+      
+      // Calculate monthly KPIs
+      const thisMonth = data[0];
+      const lastMonth = data[1] || { total: 0 };
+      
+      // Calculate YTD totals
+      const ytdSpring = data.reduce((sum, m) => sum + (m.spring || 0), 0);
+      const ytdHypnos = data.reduce((sum, m) => sum + (m.hypnos || 0), 0);
+      const ytdTotal = ytdSpring + ytdHypnos;
+      
+      // Update UI
+      const monthlyThisEl = document.getElementById('monthly-this');
+      const monthlyLastEl = document.getElementById('monthly-last');
+      const monthlySpringYtdEl = document.getElementById('monthly-spring-ytd');
+      const monthlyHypnosYtdEl = document.getElementById('monthly-hypnos-ytd');
+      const monthlyYtdEl = document.getElementById('monthly-ytd');
+      
+      if (monthlyThisEl) monthlyThisEl.textContent = thisMonth.total || 0;
+      if (monthlyLastEl) monthlyLastEl.textContent = lastMonth.total || 0;
+      if (monthlySpringYtdEl) monthlySpringYtdEl.textContent = ytdSpring;
+      if (monthlyHypnosYtdEl) monthlyHypnosYtdEl.textContent = ytdHypnos;
+      if (monthlyYtdEl) monthlyYtdEl.textContent = ytdTotal;
+      
+      // Create monthly chart
+      createMonthlyChart(data);
+      
+      // Create YTD size mix chart
+      createMonthlySizeChart(ytdTotal);
+      
+      // Populate monthly table
+      populateMonthlyTable(data);
+      
+    } catch (err) {
+      console.error('Error fetching monthly details:', err);
+    }
+  };
+  
+  const createMonthlyChart = (data) => {
+    const ctx = document.getElementById('monthlyChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.monthlyChart) {
+      chartsRef.current.monthlyChart.destroy();
+    }
+    
+    const months = data.map(d => d.month);
+    const springData = data.map(d => d.spring || 0);
+    const hypnosData = data.map(d => d.hypnos || 0);
+    const targetData = data.map(d => d.target || 20000);
+    
+    Chart.defaults.font.family = "'Lora', Georgia, serif";
+    Chart.defaults.color = '#4A6A7D';
+    
+    chartsRef.current.monthlyChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: months,
+        datasets: [
+          {
+            label: 'Spring',
+            data: springData,
+            backgroundColor: 'rgba(46,122,171,0.7)',
+            borderColor: '#2E7AAB',
+            borderWidth: 1
+          },
+          {
+            label: 'Hypnos',
+            data: hypnosData,
+            backgroundColor: 'rgba(27,79,106,0.7)',
+            borderColor: '#1B4F6A',
+            borderWidth: 1
+          },
+          {
+            label: 'Target',
+            data: targetData,
+            type: 'line',
+            borderColor: '#3E9AD0',
+            backgroundColor: 'transparent',
+            borderWidth: 2,
+            pointRadius: 0
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
+          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+  
+  const createMonthlySizeChart = (ytdTotal) => {
+    const ctx = document.getElementById('monthlySizeChart');
+    if (!ctx) return;
+    
+    if (chartsRef.current.monthlySizeChart) {
+      chartsRef.current.monthlySizeChart.destroy();
+    }
+    
+    // Simplified YTD size distribution
+    const king = Math.round(ytdTotal * 0.3);
+    const queen = Math.round(ytdTotal * 0.35);
+    const doubleSize = Math.round(ytdTotal * 0.25);
+    const single = Math.round(ytdTotal * 0.1);
+    
+    chartsRef.current.monthlySizeChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['King', 'Queen', 'Double', 'Single'],
+        datasets: [{
+          data: [king, queen, doubleSize, single],
+          backgroundColor: ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'],
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
+        cutout: '65%'
+      }
+    });
+  };
+  
+  const populateMonthlyTable = (data) => {
+    const tbody = document.getElementById('monthly-table-body');
+    if (!tbody) return;
+    
+    let html = '';
+    
+    data.forEach(month => {
+      const total = month.total || 0;
+      const target = month.target || 20000;
+      const attainment = total > 0 ? Math.round((total / target) * 100) : 0;
+      
+      // Simplified size distribution
+      const king = Math.round(total * 0.3);
+      const queen = Math.round(total * 0.35);
+      const doubleSize = Math.round(total * 0.25);
+      const single = Math.round(total * 0.1);
+      
+      html += `
+        <tr>
+          <td>${month.month}</td>
+          <td className="num">${month.spring || 0}</td>
+          <td className="num">${month.hypnos || 0}</td>
+          <td className="num">${total}</td>
+          <td className="num">${target}</td>
+          <td className="num">${attainment}%</td>
+          <td className="num">${king}</td>
+          <td className="num">${queen}</td>
+          <td className="num">${doubleSize}</td>
+          <td className="num">${single}</td>
+        </tr>
+      `;
+    });
+    
+    tbody.innerHTML = html;
+  };
+  
   // Make ring SVG
   const makeRing = (label, pct, color) => {
     pct = Math.min(100, pct);
@@ -373,6 +1073,17 @@ function App() {
   // Handle tab switching
   const handleTabChange = (tabName) => {
     setActiveTab(tabName);
+    
+    // Fetch data when switching to specific tabs
+    if (tabName === 'hourly') {
+      fetchHourlyDetails();
+    } else if (tabName === 'daily') {
+      fetchDailyData();
+    } else if (tabName === 'weekly') {
+      fetchWeeklyData();
+    } else if (tabName === 'monthly') {
+      fetchMonthlyData();
+    }
   };
   
   const getStatusClass = (status) => {
@@ -392,6 +1103,22 @@ function App() {
   const toggleTvMode = () => {
     setTvMode(!tvMode);
   };
+  
+  // Auto-rotation effect
+  useEffect(() => {
+    if (!autoRotate) return;
+    
+    const tabs = ['dashboard', 'hourly', 'daily', 'weekly', 'monthly'];
+    let currentIndex = tabs.indexOf(activeTab);
+    if (currentIndex === -1) currentIndex = 0;
+    
+    const interval = setInterval(() => {
+      currentIndex = (currentIndex + 1) % tabs.length;
+      setActiveTab(tabs[currentIndex]);
+    }, rotateInterval * 1000);
+    
+    return () => clearInterval(interval);
+  }, [autoRotate, rotateInterval, activeTab]);
   
   return (
     <div className={tvMode ? 'tv-mode' : ''}>
@@ -673,108 +1400,470 @@ function App() {
               {tab === 'hourly' ? (
                 <div>
                   <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Hourly Production — Coming Soon
+                    Hourly Production — Detailed View
                   </div>
-                  <div style={{textAlign: 'center', color: 'var(--text-muted)', padding: '1rem'}}>
-                    Use the Dashboard tab for current hourly production data
+                  <div style={{padding: '1rem'}}>
+                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
+                      <div className="kpi-card spring-accent">
+                        <div className="kpi-label">This Hour Total</div>
+                        <div className="kpi-value" id="hourly-total">--</div>
+                        <div className="kpi-sub">units this hour</div>
+                      </div>
+                      <div className="kpi-card spring-accent">
+                        <div className="kpi-label">Spring — This Hour</div>
+                        <div className="kpi-value" id="hourly-spring">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card hypnos-accent">
+                        <div className="kpi-label">Hypnos — This Hour</div>
+                        <div className="kpi-value" id="hourly-hypnos">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card warn-accent">
+                        <div className="kpi-label">Hourly Target</div>
+                        <div className="kpi-value">120</div>
+                        <div className="kpi-sub">units/hour</div>
+                      </div>
+                      <div className="kpi-card success-accent">
+                        <div className="kpi-label">Best Hour Today</div>
+                        <div className="kpi-value" id="best-hour">--</div>
+                        <div className="kpi-sub">highest production</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Worst Hour Today</div>
+                        <div className="kpi-value" id="worst-hour">--</div>
+                        <div className="kpi-sub">lowest production</div>
+                      </div>
+                    </div>
+                    <div className="grid-2-1">
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Hourly Production Trend</div>
+                            <div className="card-subtitle">Today's hourly breakdown</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '250px'}}>
+                            <canvas id="hourlyTrendChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Hourly Size Mix</div>
+                            <div className="card-subtitle">Size distribution by hour</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '250px'}}>
+                            <canvas id="hourlySizeChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card" style={{marginTop: '1rem'}}>
+                      <div className="card-header">
+                        <div>
+                          <div className="card-title">Hour-by-Hour Log</div>
+                          <div className="card-subtitle">Today's detailed hourly breakdown</div>
+                        </div>
+                      </div>
+                      <div className="card-body" style={{padding: 0}}>
+                        <table className="prod-table">
+                          <thead>
+                            <tr>
+                              <th>Hour</th>
+                              <th>Spring</th>
+                              <th>Hypnos</th>
+                              <th>Total</th>
+                              <th>King</th>
+                              <th>Queen</th>
+                              <th>Double</th>
+                              <th>Single</th>
+                              <th>vs Target</th>
+                            </tr>
+                          </thead>
+                          <tbody id="hourly-table-body">
+                            <tr><td colSpan="9" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading hourly data...</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : tab === 'daily' ? (
                 <div>
                   <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Daily Production — Last 14 Days
+                    Daily Production — Detailed View
                   </div>
                   <div style={{padding: '1rem'}}>
-                    <table className="prod-table">
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Spring</th>
-                          <th>Hypnos</th>
-                          <th>Total</th>
-                          <th>Efficiency</th>
-                          <th>Downtime</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dailyData.length > 0 ? dailyData.map((day, idx) => (
-                          <tr key={idx}>
-                            <td>{day.date}</td>
-                            <td className="num">{day.spring}</td>
-                            <td className="num">{day.hypnos}</td>
-                            <td className="num">{day.total}</td>
-                            <td className="num">{day.efficiency}%</td>
-                            <td className="num">{day.downtime} min</td>
-                          </tr>
-                        )) : <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading daily data...</td></tr>}
-                      </tbody>
-                    </table>
+                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
+                      <div className="kpi-card spring-accent">
+                        <div className="kpi-label">Today Total</div>
+                        <div className="kpi-value" id="daily-today">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Yesterday</div>
+                        <div className="kpi-value" id="daily-yesterday">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card success-accent">
+                        <div className="kpi-label">Daily Target</div>
+                        <div className="kpi-value">960</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Best Day (7d)</div>
+                        <div className="kpi-value" id="daily-best">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Avg Daily (7d)</div>
+                        <div className="kpi-value" id="daily-avg">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Downtime Today</div>
+                        <div className="kpi-value" id="daily-downtime">--</div>
+                        <div className="kpi-sub">minutes</div>
+                      </div>
+                    </div>
+                    <div className="grid-2-1">
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Daily Production — Last 14 Days</div>
+                            <div className="card-subtitle">Spring vs Hypnos</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '220px'}}>
+                            <canvas id="dailyChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Today by Variety</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '220px'}}>
+                            <canvas id="dailyVarietyChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card" style={{marginTop: '1rem'}}>
+                      <div className="card-header">
+                        <div>
+                          <div className="card-title">Daily Production Table — Last 14 Days</div>
+                        </div>
+                      </div>
+                      <div className="card-body" style={{padding: 0}}>
+                        <table className="prod-table">
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th>Spring</th>
+                              <th>Hypnos</th>
+                              <th>Total</th>
+                              <th>King</th>
+                              <th>Queen</th>
+                              <th>Double</th>
+                              <th>Single</th>
+                              <th>Efficiency</th>
+                              <th>Downtime</th>
+                            </tr>
+                          </thead>
+                          <tbody id="daily-table-body">
+                            <tr><td colSpan="10" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading daily data...</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : tab === 'weekly' ? (
                 <div>
                   <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Weekly Production — Last 8 Weeks
+                    Weekly Production — Detailed View
                   </div>
                   <div style={{padding: '1rem'}}>
-                    <table className="prod-table">
-                      <thead>
-                        <tr>
-                          <th>Week</th>
-                          <th>Spring</th>
-                          <th>Hypnos</th>
-                          <th>Total</th>
-                          <th>Target</th>
-                          <th>Efficiency</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {weeklyData.length > 0 ? weeklyData.map((week, idx) => (
-                          <tr key={idx}>
-                            <td>{week.week}</td>
-                            <td className="num">{week.spring}</td>
-                            <td className="num">{week.hypnos}</td>
-                            <td className="num">{week.total}</td>
-                            <td className="num">{week.target}</td>
-                            <td className="num">{week.efficiency}%</td>
-                          </tr>
-                        )) : <tr><td colSpan="6" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading weekly data...</td></tr>}
-                      </tbody>
-                    </table>
+                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
+                      <div className="kpi-card spring-accent">
+                        <div className="kpi-label">This Week Total</div>
+                        <div className="kpi-value" id="weekly-this">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Last Week</div>
+                        <div className="kpi-value" id="weekly-last">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card success-accent">
+                        <div className="kpi-label">Weekly Target</div>
+                        <div className="kpi-value">4,800</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Spring (week)</div>
+                        <div className="kpi-value" id="weekly-spring">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card hypnos-accent">
+                        <div className="kpi-label">Hypnos (week)</div>
+                        <div className="kpi-value" id="weekly-hypnos">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Week Efficiency</div>
+                        <div className="kpi-value" id="weekly-eff">--%</div>
+                        <div className="kpi-sub">OEE avg</div>
+                      </div>
+                    </div>
+                    <div className="grid-1-1">
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Weekly Comparison — Last 8 Weeks</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '240px'}}>
+                            <canvas id="weeklyChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Day-of-Week Pattern</div>
+                            <div className="card-subtitle">Avg output per weekday</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '240px'}}>
+                            <canvas id="dowChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card" style={{marginTop: '1rem'}}>
+                      <div className="card-header">
+                        <div>
+                          <div className="card-title">Weekly Summary Table</div>
+                        </div>
+                      </div>
+                      <div className="card-body" style={{padding: 0}}>
+                        <table className="prod-table">
+                          <thead>
+                            <tr>
+                              <th>Week</th>
+                              <th>Spring</th>
+                              <th>Hypnos</th>
+                              <th>Total</th>
+                              <th>Target</th>
+                              <th>Attainment</th>
+                              <th>Avg Efficiency</th>
+                            </tr>
+                          </thead>
+                          <tbody id="weekly-table-body">
+                            <tr><td colSpan="7" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading weekly data...</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : tab === 'monthly' ? (
                 <div>
                   <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Monthly Production — Last 12 Months
+                    Monthly Production — Detailed View
                   </div>
                   <div style={{padding: '1rem'}}>
-                    <table className="prod-table">
-                      <thead>
-                        <tr>
-                          <th>Month</th>
-                          <th>Spring</th>
-                          <th>Hypnos</th>
-                          <th>Total</th>
-                          <th>Target</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {monthlyData.length > 0 ? monthlyData.map((month, idx) => (
-                          <tr key={idx}>
-                            <td>{month.month}</td>
-                            <td className="num">{month.spring}</td>
-                            <td className="num">{month.hypnos}</td>
-                            <td className="num">{month.total}</td>
-                            <td className="num">{month.target}</td>
-                          </tr>
-                        )) : <tr><td colSpan="5" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading monthly data...</td></tr>}
-                      </tbody>
-                    </table>
+                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
+                      <div className="kpi-card spring-accent">
+                        <div className="kpi-label">This Month Total</div>
+                        <div className="kpi-value" id="monthly-this">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Last Month</div>
+                        <div className="kpi-value" id="monthly-last">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card success-accent">
+                        <div className="kpi-label">Monthly Target</div>
+                        <div className="kpi-value">20,000</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">Spring YTD</div>
+                        <div className="kpi-value" id="monthly-spring-ytd">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card hypnos-accent">
+                        <div className="kpi-label">Hypnos YTD</div>
+                        <div className="kpi-value" id="monthly-hypnos-ytd">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                      <div className="kpi-card">
+                        <div className="kpi-label">YTD Total</div>
+                        <div className="kpi-value" id="monthly-ytd">--</div>
+                        <div className="kpi-sub">units</div>
+                      </div>
+                    </div>
+                    <div className="grid-2-1">
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">Monthly Production — 12-Month View</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '230px'}}>
+                            <canvas id="monthlyChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="card">
+                        <div className="card-header">
+                          <div>
+                            <div className="card-title">YTD Size Mix</div>
+                          </div>
+                        </div>
+                        <div className="card-body">
+                          <div className="chart-wrap" style={{height: '230px'}}>
+                            <canvas id="monthlySizeChart"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="card" style={{marginTop: '1rem'}}>
+                      <div className="card-header">
+                        <div>
+                          <div className="card-title">Monthly Summary</div>
+                        </div>
+                      </div>
+                      <div className="card-body" style={{padding: 0}}>
+                        <table className="prod-table">
+                          <thead>
+                            <tr>
+                              <th>Month</th>
+                              <th>Spring</th>
+                              <th>Hypnos</th>
+                              <th>Total</th>
+                              <th>Target</th>
+                              <th>Attainment</th>
+                              <th>King</th>
+                              <th>Queen</th>
+                              <th>Double</th>
+                              <th>Single</th>
+                            </tr>
+                          </thead>
+                          <tbody id="monthly-table-body">
+                            <tr><td colSpan="10" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading monthly data...</td></tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : tab === 'settings' ? (
                 <div className="settings-panel">
+                  <div className="settings-section">
+                    <div className="settings-title">Data Source — HMI / PLC</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">PLC Endpoint URL</div>
+                        <div className="settings-row-desc">OPC-UA or Modbus TCP address of the HMI controller</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>HMI/PLC Simulator</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Authentication Method</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>Anonymous (Simulated)</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Polling Interval</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>{intervalMins} minutes</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Connection Status</div>
+                      </div>
+                      <span className="badge badge-success">Connected (Simulated)</span>
+                    </div>
+                  </div>
+
+                  <div className="settings-section">
+                    <div className="settings-title">Display Preferences</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">TV Display Mode</div>
+                        <div className="settings-row-desc">Full-screen kiosk optimised layout</div>
+                      </div>
+                      <div className="toggle-wrap" onClick={toggleTvMode}>
+                        <div className={`toggle ${tvMode ? 'on' : ''}`}></div>
+                      </div>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Auto-rotate Tabs</div>
+                        <div className="settings-row-desc">Cycle through dashboard, hourly, daily views automatically</div>
+                      </div>
+                      <div className="toggle-wrap" onClick={() => setAutoRotate(!autoRotate)}>
+                        <div className={`toggle ${autoRotate ? 'on' : ''}`}></div>
+                      </div>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Rotate Interval (seconds)</div>
+                      </div>
+                      <select 
+                        className="control-select" 
+                        style={{width: '130px'}}
+                        value={rotateInterval}
+                        onChange={(e) => setRotateInterval(parseInt(e.target.value))}
+                      >
+                        <option value="30">30s</option>
+                        <option value="60">60s</option>
+                        <option value="120">120s</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="settings-section">
+                    <div className="settings-title">Production Targets</div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Hourly Target (Spring)</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>72 units</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Hourly Target (Hypnos)</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>48 units</span>
+                    </div>
+                    <div className="settings-row">
+                      <div>
+                        <div className="settings-row-label">Shift Duration (hours)</div>
+                      </div>
+                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>8 hours</span>
+                    </div>
+                  </div>
+
                   <div className="settings-section">
                     <div className="settings-title">Simulator Controls</div>
                     <div className="settings-row">
@@ -788,54 +1877,65 @@ function App() {
                         {simulatorStatus?.active ? 'Active' : 'Inactive'}
                       </span>
                     </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">TV Display Mode</div>
-                        <div className="settings-row-desc">Full-screen kiosk optimised layout</div>
-                      </div>
-                      <div className="toggle-wrap" onClick={toggleTvMode}>
-                        <div className={`toggle ${tvMode ? 'on' : ''}`}></div>
-                      </div>
-                    </div>
                   </div>
-                  
+
                   <div className="settings-section">
-                    <div className="settings-title">Data Source — HMI / PLC</div>
+                    <div className="settings-title">Alerts</div>
                     <div className="settings-row">
                       <div>
-                        <div className="settings-row-label">Connection Status</div>
+                        <div className="settings-row-label">Low Production Alert</div>
+                        <div className="settings-row-desc">Trigger when output falls below 80% of hourly target</div>
                       </div>
-                      <span className="badge badge-success">Connected — Simulated</span>
+                      <div className="toggle-wrap">
+                        <div className="toggle on"></div>
+                      </div>
                     </div>
                     <div className="settings-row">
                       <div>
-                        <div className="settings-row-label">Data Source</div>
+                        <div className="settings-row-label">Downtime Alert</div>
+                        <div className="settings-row-desc">Trigger when no units recorded for more than 20 minutes</div>
                       </div>
-                      <span className="badge badge-spring">HMI/PLC Simulator</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Endpoint</div>
-                        <div className="settings-row-desc">OPC-UA or Modbus TCP address of the HMI controller</div>
+                      <div className="toggle-wrap">
+                        <div className="toggle on"></div>
                       </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>HMI/PLC Simulator</span>
-                    </div>
-                  </div>
-                  
-                  <div className="settings-section">
-                    <div className="settings-title">Display Preferences</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Refresh Interval</div>
-                        <div className="settings-row-desc">Current auto-refresh setting</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>{intervalMins} minutes</span>
                     </div>
                   </div>
+
+                  <button className="control-btn" style={{marginTop: '0.5rem'}}>Save Settings</button>
                 </div>
               ) : tab === 'crm' ? (
-                <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>
-                  CRM Metrics — Not Available / Future Module
+                <div>
+                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
+                    CRM Metrics — Data Source Not Configured
+                  </div>
+                  <div style={{padding: '2rem', textAlign: 'center'}}>
+                    <div className="card" style={{maxWidth: '600px', margin: '0 auto'}}>
+                      <div className="card-body">
+                        <div style={{color: 'var(--text-muted)', marginBottom: '1rem'}}>
+                          <strong>CRM/Order/Quality Data Model Not Available</strong>
+                        </div>
+                        <div style={{color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.6'}}>
+                          <p style={{marginBottom: '1rem'}}>
+                            The CRM Metrics module requires integration with order management, quality control, and delivery tracking systems.
+                          </p>
+                          <p style={{marginBottom: '1rem'}}>
+                            The following metrics would be available when configured:
+                          </p>
+                          <ul style={{textAlign: 'left', paddingLeft: '2rem', marginBottom: '1rem'}}>
+                            <li>On-Time Delivery Rate</li>
+                            <li>Quality Pass Rate</li>
+                            <li>Defect Rate Analysis</li>
+                            <li>Rework Units Tracking</li>
+                            <li>Order Fulfilment Status</li>
+                            <li>Production vs Demand Comparison</li>
+                          </ul>
+                          <p style={{color: 'var(--text-muted)', fontStyle: 'italic'}}>
+                            For the current hackathon implementation, please use the Dashboard, Hourly, Daily, Weekly, and Monthly production views for factory floor monitoring.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>

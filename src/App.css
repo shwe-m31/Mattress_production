@@ -98,6 +98,22 @@ body {
   50% { opacity: 0.35; }
 }
 
+.highlight-row {
+  background-color: var(--container-alt);
+  font-weight: 600;
+}
+
+.grid-1-1 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+@media (max-width: 1024px) {
+  .grid-1-1 { grid-template-columns: 1fr; }
+}
+
 .clock {
   font-family: var(--font-display);
   font-size: 1.1rem;
