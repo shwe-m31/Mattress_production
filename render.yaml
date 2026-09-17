@@ -10,11 +10,13 @@ services:
       - key: PORT
         value: "8080"
       - key: DB_URL
-        value: jdbc:mysql://mysql-2d367cc8-shwetham3101-project.a.aivencloud.com:15508/mattress_production?sslMode=REQUIRED
+        value: jdbc:mysql://mysql-2d367cc8-shwetham3101-project.a.aivencloud.com:15508/mattress_production?useSSL=true&sslMode=REQUIRED&serverTimezone=Asia/Kolkata&allowPublicKeyRetrieval=true
       - key: DB_USERNAME
         value: avnadmin
       - key: DB_PASSWORD
         sync: false
+      - key: DB_DIALECT
+        value: org.hibernate.dialect.MySQLDialect
       - key: FRONTEND_URL
         value: https://mattress-production-frontend.onrender.com
       # (Optional) To enable stricter SSL verification, uncomment the DB_CA_CERT block below, 
