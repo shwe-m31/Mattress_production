@@ -2,55 +2,57 @@ package com.peps.production.service;
 
 import com.peps.production.dto.Settings;
 import com.peps.production.model.*;
-import com.peps.production.repository.*;
+import com.peps.production.repository.ProductionSettingsRepository;
+import com.peps.production.repository.ProductionTargetRepository;
+import com.peps.production.repository.ShiftConfigurationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class SettingsService {
     private static final Logger logger = LoggerFactory.getLogger(SettingsService.class);
-    
+
     private final ProductionSettingsRepository settingsRepository;
     private final ProductionTargetRepository targetRepository;
     private final ShiftConfigurationRepository shiftRepository;
-    
+
     public SettingsService(ProductionSettingsRepository settingsRepository,
-                          ProductionTargetRepository targetRepository,
-                          ShiftConfigurationRepository shiftRepository) {
+                           ProductionTargetRepository targetRepository,
+                           ShiftConfigurationRepository shiftRepository) {
         this.settingsRepository = settingsRepository;
         this.targetRepository = targetRepository;
         this.shiftRepository = shiftRepository;
     }
-    
+
     /**
-     * Get complete settings including production targets and shift configurations
+     * Get complete settings object
      */
     public Settings getSettings() {
         Settings settings = new Settings();
-        
-        // Get production settings
+
         ProductionSettings prodSettings = settingsRepository.findBySettingsKey("DEFAULT")
-            .orElseGet(() -> {
-                ProductionSettings newSettings = new ProductionSettings();
-                newSettings.setSettingsKey("DEFAULT");
-                return settingsRepository.save(newSettings);
-            });
-        
+                .orElseGet(() -> {
+                    ProductionSettings defaultSetting = new ProductionSettings();
+                    defaultSetting.setSettingsKey("DEFAULT");
+                    return settingsRepository.save(defaultSetting);
+                });
+
         settings.setPreferredMode(prodSettings.getPreferredMode());
         settings.setDashboardUpdateInterval(prodSettings.getDashboardUpdateInterval());
         settings.setDataSourceUrl(prodSettings.getDataSourceUrl());
         settings.setAuthenticationMethod(prodSettings.getAuthenticationMethod());
         settings.setDataSourcePollingInterval(prodSettings.getDataSourcePollingInterval());
         settings.setConnectionStatus(prodSettings.getConnectionStatus());
-        settings.setLastUpdated(prodSettings.getLastUpdated().toString());
-        
-        // Get production targets
+        settings.setLastUpdated(prodSettings.getLastUpdated() != null ? prodSettings.getLastUpdated().toString() : LocalDateTime.now().toString());
+
+        // 8 Product targets
         Map<String, Integer> targets = new LinkedHashMap<>();
         for (ProductType productType : ProductType.values()) {
             for (MattressSize size : MattressSize.values()) {
@@ -60,54 +62,55 @@ public class SettingsService {
             }
         }
         settings.setProductionTargets(targets);
-        
-        // Get shift configurations
+
+        // Shifts
         List<Settings.ShiftConfigDto> shiftConfigs = shiftRepository.findByActiveTrueOrderByStartTime()
-            .stream()
-            .map(shift -> new Settings.ShiftConfigDto(
-                shift.getShiftName(),
-                shift.getStartTime().toString(),
-                shift.getEndTime().toString(),
-                shift.isActive()
-            ))
-            .collect(Collectors.toList());
+                .stream()
+                .map(shift -> new Settings.ShiftConfigDto(
+                        shift.getShiftName(),
+                        shift.getStartTime().toString(),
+                        shift.getEndTime().toString(),
+                        shift.isActive()
+                ))
+                .collect(Collectors.toList());
         settings.setShiftConfigurations(shiftConfigs);
-        
+
         return settings;
     }
-    
+
     /**
-     * Update settings including production targets and shift configurations
+     * Update settings and recalculate targets
      */
     @Transactional
     public Settings updateSettings(Settings settings) {
-        // Update production settings
         ProductionSettings prodSettings = settingsRepository.findBySettingsKey("DEFAULT")
-            .orElseGet(() -> {
-                ProductionSettings newSettings = new ProductionSettings();
-                newSettings.setSettingsKey("DEFAULT");
-                return newSettings;
-            });
-        
-        prodSettings.setPreferredMode(settings.getPreferredMode());
-        prodSettings.setDashboardUpdateInterval(settings.getDashboardUpdateInterval());
-        
-        // Only update data source settings if in DATA_SOURCE mode
-        if ("DATA_SOURCE".equals(settings.getPreferredMode())) {
+                .orElseGet(() -> {
+                    ProductionSettings s = new ProductionSettings();
+                    s.setSettingsKey("DEFAULT");
+                    return s;
+                });
+
+        String mode = "DATA_SOURCE".equalsIgnoreCase(settings.getPreferredMode()) ? "DATA_SOURCE" : "SIMULATED";
+        prodSettings.setPreferredMode(mode);
+        if (settings.getDashboardUpdateInterval() > 0) {
+            prodSettings.setDashboardUpdateInterval(settings.getDashboardUpdateInterval());
+        }
+
+        if ("DATA_SOURCE".equals(mode)) {
             prodSettings.setDataSourceUrl(settings.getDataSourceUrl());
             prodSettings.setAuthenticationMethod(settings.getAuthenticationMethod());
             prodSettings.setDataSourcePollingInterval(settings.getDataSourcePollingInterval());
+            prodSettings.setConnectionStatus("READY");
         } else {
-            // Clear data source settings in SIMULATED mode
             prodSettings.setDataSourceUrl(null);
             prodSettings.setAuthenticationMethod(null);
             prodSettings.setDataSourcePollingInterval(null);
             prodSettings.setConnectionStatus("DISCONNECTED");
         }
-        
+
         prodSettings.setLastUpdated(LocalDateTime.now());
         settingsRepository.save(prodSettings);
-        
+
         // Update production targets
         if (settings.getProductionTargets() != null) {
             for (Map.Entry<String, Integer> entry : settings.getProductionTargets().entrySet()) {
@@ -116,150 +119,141 @@ public class SettingsService {
                     try {
                         ProductType productType = ProductType.valueOf(parts[0]);
                         MattressSize size = MattressSize.valueOf(parts[1]);
-                        
+                        int value = Math.max(0, entry.getValue() != null ? entry.getValue() : 0);
+
                         Optional<ProductionTarget> existing = targetRepository.findByProductTypeAndSize(productType, size);
                         if (existing.isPresent()) {
                             ProductionTarget target = existing.get();
-                            target.setHourlyTarget(entry.getValue());
+                            target.setHourlyTarget(value);
                             target.setLastUpdated(LocalDateTime.now());
                             targetRepository.save(target);
                         } else {
-                            ProductionTarget newTarget = new ProductionTarget(productType, size, entry.getValue());
+                            ProductionTarget newTarget = new ProductionTarget(productType, size, value);
                             targetRepository.save(newTarget);
                         }
                     } catch (IllegalArgumentException e) {
-                        logger.warn("Invalid product type or size in target: {}", entry.getKey());
+                        logger.warn("Invalid product type or size key in settings: {}", entry.getKey());
                     }
                 }
             }
         }
-        
+
         // Update shift configurations
-        if (settings.getShiftConfigurations() != null) {
-            for (Settings.ShiftConfigDto shiftConfig : settings.getShiftConfigurations()) {
-                Optional<ShiftConfiguration> existing = shiftRepository.findByShiftName(shiftConfig.getShiftName());
+        if (settings.getShiftConfigurations() != null && !settings.getShiftConfigurations().isEmpty()) {
+            for (Settings.ShiftConfigDto shiftDto : settings.getShiftConfigurations()) {
+                Optional<ShiftConfiguration> existing = shiftRepository.findByShiftName(shiftDto.getShiftName());
+                LocalTime start = LocalTime.parse(shiftDto.getStartTime());
+                LocalTime end = LocalTime.parse(shiftDto.getEndTime());
+                
                 if (existing.isPresent()) {
                     ShiftConfiguration shift = existing.get();
-                    shift.setStartTime(java.time.LocalTime.parse(shiftConfig.getStartTime()));
-                    shift.setEndTime(java.time.LocalTime.parse(shiftConfig.getEndTime()));
-                    shift.setActive(shiftConfig.isActive());
+                    shift.setStartTime(start);
+                    shift.setEndTime(end);
+                    shift.setActive(shiftDto.isActive());
                     shift.setLastUpdated(LocalDateTime.now());
                     shiftRepository.save(shift);
                 } else {
-                    ShiftConfiguration newShift = new ShiftConfiguration(
-                        shiftConfig.getShiftName(),
-                        java.time.LocalTime.parse(shiftConfig.getStartTime()),
-                        java.time.LocalTime.parse(shiftConfig.getEndTime())
-                    );
-                    newShift.setActive(shiftConfig.isActive());
+                    ShiftConfiguration newShift = new ShiftConfiguration(shiftDto.getShiftName(), start, end);
+                    newShift.setActive(shiftDto.isActive());
                     shiftRepository.save(newShift);
                 }
             }
         }
-        
-        logger.info("Settings updated successfully. Mode: {}, Dashboard interval: {} min", 
-            settings.getPreferredMode(), settings.getDashboardUpdateInterval());
-        
+
+        logger.info("Production settings successfully updated in MySQL database. Mode: {}", mode);
         return getSettings();
     }
-    
-    /**
-     * Calculate total hourly target from all configured product targets
-     */
+
+    public int calculateSpringHourlyTarget() {
+        return targetRepository.findByProductType(ProductType.SPRING)
+                .stream().mapToInt(ProductionTarget::getHourlyTarget).sum();
+    }
+
+    public int calculateHypnosHourlyTarget() {
+        return targetRepository.findByProductType(ProductType.HYPNOS)
+                .stream().mapToInt(ProductionTarget::getHourlyTarget).sum();
+    }
+
     public int calculateTotalHourlyTarget() {
         return targetRepository.findAll()
-            .stream()
-            .mapToInt(ProductionTarget::getHourlyTarget)
-            .sum();
+                .stream().mapToInt(ProductionTarget::getHourlyTarget).sum();
     }
-    
-    /**
-     * Calculate shift target based on hourly target and shift duration
-     */
+
     public int calculateShiftTarget(String shiftName) {
         Optional<ShiftConfiguration> shiftOpt = shiftRepository.findByShiftName(shiftName);
         if (shiftOpt.isEmpty()) {
-            return 0;
+            return calculateTotalHourlyTarget() * 8; // fallback 8h shift
         }
-        
         ShiftConfiguration shift = shiftOpt.get();
         double durationHours = shift.getDurationHours();
-        int hourlyTarget = calculateTotalHourlyTarget();
-        
-        return (int) (hourlyTarget * durationHours);
+        return (int) Math.round(calculateTotalHourlyTarget() * durationHours);
     }
-    
-    /**
-     * Get current shift based on current time
-     */
+
     public Optional<ShiftConfiguration> getCurrentShift() {
-        java.time.LocalTime now = java.time.LocalTime.now();
-        List<ShiftConfiguration> activeShifts = shiftRepository.findByActiveTrueOrderByStartTime();
-        
-        for (ShiftConfiguration shift : activeShifts) {
+        LocalTime now = LocalTime.now();
+        List<ShiftConfiguration> shifts = shiftRepository.findByActiveTrueOrderByStartTime();
+        for (ShiftConfiguration shift : shifts) {
             if (isTimeInShift(now, shift)) {
                 return Optional.of(shift);
             }
         }
-        
-        return Optional.empty();
+        return shifts.isEmpty() ? Optional.empty() : Optional.of(shifts.get(0));
     }
-    
-    /**
-     * Check if a given time falls within a shift
-     */
-    private boolean isTimeInShift(java.time.LocalTime time, ShiftConfiguration shift) {
-        java.time.LocalTime start = shift.getStartTime();
-        java.time.LocalTime end = shift.getEndTime();
-        
+
+    private boolean isTimeInShift(LocalTime time, ShiftConfiguration shift) {
+        LocalTime start = shift.getStartTime();
+        LocalTime end = shift.getEndTime();
         if (end.isAfter(start)) {
-            // Normal shift (e.g., 06:00 to 14:00)
             return !time.isBefore(start) && !time.isAfter(end);
         } else {
-            // Overnight shift (e.g., 22:00 to 06:00)
+            // Overnight shift (e.g. 22:00 to 06:00)
             return !time.isBefore(start) || !time.isAfter(end);
         }
     }
-    
-    /**
-     * Initialize default settings if they don't exist
-     */
+
     @Transactional
     public void initializeDefaultSettings() {
-        // Check if settings already exist
         if (settingsRepository.findBySettingsKey("DEFAULT").isPresent()) {
             return;
         }
-        
-        logger.info("Initializing default production settings");
-        
-        // Create default production settings
+
+        logger.info("Initializing baseline default production settings in MySQL...");
+
         ProductionSettings defaultSettings = new ProductionSettings();
         defaultSettings.setSettingsKey("DEFAULT");
         defaultSettings.setPreferredMode("SIMULATED");
         defaultSettings.setDashboardUpdateInterval(15);
         defaultSettings.setConnectionStatus("DISCONNECTED");
         settingsRepository.save(defaultSettings);
-        
-        // Create default production targets (all zeros initially)
-        for (ProductType productType : ProductType.values()) {
-            for (MattressSize size : MattressSize.values()) {
-                ProductionTarget target = new ProductionTarget(productType, size, 0);
-                targetRepository.save(target);
-            }
-        }
-        
-        // Create default shift configurations
-        List<ShiftConfiguration> defaultShifts = Arrays.asList(
-            new ShiftConfiguration("Morning Shift", java.time.LocalTime.of(6, 0), java.time.LocalTime.of(14, 0)),
-            new ShiftConfiguration("Evening Shift", java.time.LocalTime.of(14, 0), java.time.LocalTime.of(22, 0)),
-            new ShiftConfiguration("Night Shift", java.time.LocalTime.of(22, 0), java.time.LocalTime.of(6, 0))
+
+        // Baseline targets
+        Map<String, Integer> defaultTargets = Map.of(
+                "SPRING_SINGLE", 10,
+                "SPRING_DOUBLE", 12,
+                "SPRING_QUEEN", 15,
+                "SPRING_KING", 8,
+                "HYPNOS_SINGLE", 8,
+                "HYPNOS_DOUBLE", 10,
+                "HYPNOS_QUEEN", 12,
+                "HYPNOS_KING", 7
         );
-        
-        for (ShiftConfiguration shift : defaultShifts) {
-            shiftRepository.save(shift);
+
+        for (Map.Entry<String, Integer> entry : defaultTargets.entrySet()) {
+            String[] parts = entry.getKey().split("_");
+            ProductType type = ProductType.valueOf(parts[0]);
+            MattressSize size = MattressSize.valueOf(parts[1]);
+            ProductionTarget target = new ProductionTarget(type, size, entry.getValue());
+            targetRepository.save(target);
         }
-        
-        logger.info("Default settings initialized successfully");
+
+        // Baseline shifts
+        List<ShiftConfiguration> defaultShifts = Arrays.asList(
+                new ShiftConfiguration("Morning Shift", LocalTime.of(6, 0), LocalTime.of(14, 0)),
+                new ShiftConfiguration("Evening Shift", LocalTime.of(14, 0), LocalTime.of(22, 0)),
+                new ShiftConfiguration("Night Shift", LocalTime.of(22, 0), LocalTime.of(6, 0))
+        );
+        shiftRepository.saveAll(defaultShifts);
+
+        logger.info("Baseline default settings initialized successfully");
     }
 }

@@ -5,61 +5,76 @@ import Chart from "chart.js/auto";
 import productionApi from "./services/productionApi";
 
 function App() {
-  // State management
+  // Navigation & Control state
   const [activeTab, setActiveTab] = useState('dashboard');
   const [clock, setClock] = useState('--:-- -- | --- --, ----');
-  const [countdown, setCountdown] = useState('15:00');
   const [intervalMins, setIntervalMins] = useState(15);
+  const [secondsRemaining, setSecondsRemaining] = useState(15 * 60);
   const [lineSelect, setLineSelect] = useState('all');
   const [shiftSelect, setShiftSelect] = useState('current');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [tvMode, setTvMode] = useState(false);
-  const [autoRotate, setAutoRotate] = useState(false);
-  const [rotateInterval, setRotateInterval] = useState(60);
-  
-  // Data state - all from backend
+
+  // Settings State
+  const [settingsData, setSettingsData] = useState({
+    preferredMode: 'SIMULATED',
+    dashboardUpdateInterval: 15,
+    dataSourceUrl: 'opc.tcp://192.168.1.100:4840',
+    authenticationMethod: 'Anonymous',
+    dataSourcePollingInterval: 5,
+    connectionStatus: 'DISCONNECTED',
+    productionTargets: {
+      SPRING_SINGLE: 10,
+      SPRING_DOUBLE: 12,
+      SPRING_QUEEN: 15,
+      SPRING_KING: 8,
+      HYPNOS_SINGLE: 8,
+      HYPNOS_DOUBLE: 10,
+      HYPNOS_QUEEN: 12,
+      HYPNOS_KING: 7
+    },
+    shiftConfigurations: [
+      { shiftName: 'Morning Shift', startTime: '06:00', endTime: '14:00', active: true },
+      { shiftName: 'Evening Shift', startTime: '14:00', endTime: '22:00', active: true },
+      { shiftName: 'Night Shift', startTime: '22:00', endTime: '06:00', active: true }
+    ]
+  });
+  const [settingsSaveMessage, setSettingsSaveMessage] = useState(null);
+
+  // Dashboard Data State
   const [kpiData, setKpiData] = useState({
     total: 0,
     spring: 0,
     hypnos: 0,
-    targetPct: 0,
+    shiftTarget: 0,
+    targetPct: '0%',
     targetSub: '0 / 0 units',
-    cycle: '--',
-    eff: '--%'
+    efficiency: 0
   });
-  
-  const [hmiLog, setHmiLog] = useState([]);
-  const [prodLog, setProdLog] = useState([]);
   const [sizeBreakdown, setSizeBreakdown] = useState([]);
-  const [efficiencyMeters, setEfficiencyMeters] = useState([]);
-  const [progressRings, setProgressRings] = useState([]);
-  const [shiftTime, setShiftTime] = useState({ endTime: '--:--', remaining: '--' });
-  const [simulatorStatus, setSimulatorStatus] = useState(null);
-  
-  // Historical data state
+  const [incomingFeed, setIncomingFeed] = useState([]);
+  const [alerts, setAlerts] = useState([]);
+  const [downtimeMinutes, setDowntimeMinutes] = useState(0);
+  const [currentShiftInfo, setCurrentShiftInfo] = useState({ shiftName: '--', startTime: '--:--', endTime: '--:--', durationHours: 8 });
+
+  // Analytics Data State
   const [dailyData, setDailyData] = useState([]);
   const [weeklyData, setWeeklyData] = useState([]);
   const [monthlyData, setMonthlyData] = useState([]);
-  
-  // Chart refs
-  const hourlyChartRef = useRef(null);
+
+  // Chart references
   const chartsRef = useRef({});
-  
-  const SIZE_COLORS = ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'];
-  
-  const TARGETS = {
-    hourlySpring: 72,
-    hourlyHypnos: 48,
-    hourlyTotal: 120,
-    daily: 960,
-    weekly: 4800,
-    monthly: 20000,
-    shift: 960,
-    cycleTime: 4.5
+  const timerRef = useRef(null);
+
+  const SIZE_COLORS = {
+    king: '#2E7AAB',
+    queen: '#1B4F6A',
+    double: '#3E9AD0',
+    single: '#7ABCD5'
   };
-  
-  // Update clock
+
+  // Update Clock
   const updateClock = () => {
     const now = new Date();
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -73,152 +88,151 @@ function App() {
     
     setClock(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} ${ampm}  |  ${days[now.getDay()]}, ${months[now.getMonth()]} ${now.getDate()}, ${now.getFullYear()}`);
   };
-  
-  // Initialize dashboard data from backend
-  const initDashboard = async () => {
-    setIsLoading(true);
-    setError(null);
-    
+
+  // Format MM:SS for timer
+  const formatCountdown = (secs) => {
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  };
+
+  // Load Settings from Backend
+  const loadSettings = async () => {
     try {
-      // Fetch dashboard data from backend
-      const dashboardData = await productionApi.getDashboard();
+      const data = await productionApi.getSettings();
+      if (data) {
+        setSettingsData(prev => ({
+          ...prev,
+          ...data,
+          productionTargets: data.productionTargets || prev.productionTargets,
+          shiftConfigurations: data.shiftConfigurations || prev.shiftConfigurations
+        }));
+        if (data.dashboardUpdateInterval && data.dashboardUpdateInterval !== intervalMins) {
+          setIntervalMins(data.dashboardUpdateInterval);
+          setSecondsRemaining(data.dashboardUpdateInterval * 60);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load settings:', err);
+    }
+  };
+
+  // Fetch Dashboard Data from Backend
+  const fetchDashboardData = async () => {
+    try {
+      setError(null);
+      const data = await productionApi.getDashboard();
       
-      // Update KPI data
       setKpiData({
-        total: dashboardData.totalProduction.toLocaleString(),
-        spring: dashboardData.springCount.toLocaleString(),
-        hypnos: dashboardData.hypnosCount.toLocaleString(),
-        targetPct: Math.round((dashboardData.totalProduction / TARGETS.shift) * 100) + '%',
-        targetSub: `${dashboardData.totalProduction} / ${TARGETS.shift} units`,
-        cycle: '4.2', // Would come from backend in real implementation
-        eff: dashboardData.efficiency + '%'
+        total: (data.totalProduction || 0).toLocaleString(),
+        spring: (data.springCount || 0).toLocaleString(),
+        hypnos: (data.hypnosCount || 0).toLocaleString(),
+        shiftTarget: data.shiftTarget || 0,
+        targetPct: (data.targetPercentage || 0) + '%',
+        targetSub: `${data.totalProduction || 0} / ${data.shiftTarget || 0} units`,
+        efficiency: data.efficiency || 0
       });
-      
-      // Process size breakdown from backend data
-      const sizeData = Object.entries(dashboardData.sizeBreakdown || {}).map(([name, data]) => {
-        const total = (data.spring || 0) + (data.hypnos || 0);
-        const pct = total > 0 ? Math.round((data.spring + data.hypnos) / dashboardData.totalProduction * 100) : 0;
+
+      // Size breakdown
+      const sizeEntries = Object.entries(data.sizeBreakdown || {}).map(([name, counts]) => {
+        const total = (counts.spring || 0) + (counts.hypnos || 0);
+        const pct = data.totalProduction > 0 ? Math.round((total / data.totalProduction) * 100) : 0;
         return {
           name: name.charAt(0).toUpperCase() + name.slice(1),
           val: total,
           pct: pct,
-          color: SIZE_COLORS[['king', 'queen', 'double', 'single'].indexOf(name)]
+          color: SIZE_COLORS[name.toLowerCase()] || '#2E7AAB'
         };
       });
-      setSizeBreakdown(sizeData);
-      
-      // Process recent production from backend
-      const recentData = (dashboardData.recentItems || []).map(item => ({
-        time: new Date(item.completionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: item.productType === 'SPRING' ? 'Spring' : 'Hypnos',
-        variety: item.variety || 'Standard',
-        size: item.size,
-        count: item.quantity || 1,
-        cycle: item.cycleTime || 0,
-        line: item.productionLine || 'Line 1',
-        status: item.status || 'COMPLETED'
-      }));
-      setHmiLog(recentData);
-      setProdLog(recentData);
-      
-      // Generate progress rings based on real data
-      const springPct = Math.min(100, Math.round((dashboardData.springCount / (TARGETS.shift * 0.6)) * 100));
-      const hypnosPct = Math.min(100, Math.round((dashboardData.hypnosCount / (TARGETS.shift * 0.4)) * 100));
-      const totalPct = Math.round((dashboardData.totalProduction / TARGETS.shift) * 100);
-      
-      setProgressRings([
-        { label: 'Spring', pct: springPct, color: '#2E7AAB' },
-        { label: 'Hypnos', pct: hypnosPct, color: '#1B4F6A' },
-        { label: 'Total', pct: totalPct, color: '#3E9AD0' }
-      ]);
-      
-      // Calculate shift time
-      const now = new Date();
-      const shiftEnd = new Date();
-      shiftEnd.setHours(22, 0, 0, 0);
-      const remain = Math.max(0, shiftEnd - now);
-      const rh = Math.floor(remain / 3600000);
-      const rm = Math.floor((remain % 3600000) / 60000);
-      setShiftTime({
-        endTime: '22:00',
-        remaining: `${rh}h ${rm}m`
-      });
-      
-      // Generate efficiency meters (simplified calculation from real data)
-      const effMetrics = [
-        { label: 'Availability', val: Math.min(100, dashboardData.efficiency + 5), color: '#2E7AAB' },
-        { label: 'Performance', val: Math.min(100, dashboardData.efficiency - 2), color: '#1B4F6A' },
-        { label: 'Quality', val: Math.min(100, dashboardData.efficiency + 8), color: '#3E9AD0' },
-        { label: 'OEE', val: dashboardData.efficiency, color: '#2A7D5B' }
-      ];
-      setEfficiencyMeters(effMetrics);
-      
-      // Create hourly chart from backend data
-      createHourlyChart(dashboardData.hourlyData);
-      
+      setSizeBreakdown(sizeEntries);
+
+      // Incoming Production Records (1 row = 1 completed unit)
+      setIncomingFeed(data.recentItems || []);
+
+      // Operational Information
+      setAlerts(data.alerts || []);
+      setDowntimeMinutes(data.downtimeMinutes || 0);
+      if (data.currentShift) {
+        setCurrentShiftInfo(data.currentShift);
+      }
+
+      // Render Hourly Chart
+      renderHourlyChart(data.hourlyData);
+
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
-      setError('Failed to load production data. Backend may be unavailable.');
-    } finally {
-      setIsLoading(false);
+      setError('Unable to load production data from backend. Please verify backend service.');
     }
   };
-  
-  // Create hourly chart from backend data
-  const createHourlyChart = (hourlyData) => {
-    const ctx = hourlyChartRef.current;
-    if (!ctx || !hourlyData) return;
-    
-    if (chartsRef.current.hourlyChart) {
-      chartsRef.current.hourlyChart.destroy();
+
+  // Render Dashboard Hourly Chart (Time-Aware)
+  const renderHourlyChart = (hourlyData) => {
+    const canvas = document.getElementById('hourlyDashboardChart');
+    if (!canvas || !hourlyData) return;
+
+    if (chartsRef.current.hourlyDashboard) {
+      chartsRef.current.hourlyDashboard.destroy();
     }
-    
-    // Process hourly data for chart
+
+    const currentHour = new Date().getHours();
     const hours = [];
-    const springData = [];
-    const hypnosData = [];
-    const targetData = [];
-    
-    const startHour = 6; // 6 AM
-    for (let i = 0; i < 24; i++) {
-      const hour = (startHour + i) % 24;
-      hours.push(`${hour}:00`);
-      springData.push(hourlyData.spring[i] || 0);
-      hypnosData.push(hourlyData.hypnos[i] || 0);
-      targetData.push(TARGETS.hourlyTotal);
+    const springValues = [];
+    const hypnosValues = [];
+    const targetValues = [];
+
+    // Calculate hourly target from settings
+    const hourlyTarget = calculateTotalHourlyTarget();
+
+    // From shift start (6 AM or 0) up to current hour only (time-aware)
+    const startHour = 6;
+    const hoursCount = Math.max(1, (currentHour >= startHour ? (currentHour - startHour + 1) : (24 - startHour + currentHour + 1)));
+
+    for (let i = 0; i < Math.min(24, Math.max(8, hoursCount)); i++) {
+      const h = (startHour + i) % 24;
+      hours.push(`${String(h).padStart(2, '0')}:00`);
+      
+      // Only include values if hour is <= currentHour
+      const isPastOrCurrent = (startHour <= currentHour) ? 
+        (h >= startHour && h <= currentHour) : 
+        (h >= startHour || h <= currentHour);
+
+      if (isPastOrCurrent) {
+        springValues.push(hourlyData.spring ? (hourlyData.spring[h] || 0) : 0);
+        hypnosValues.push(hourlyData.hypnos ? (hourlyData.hypnos[h] || 0) : 0);
+      } else {
+        springValues.push(0);
+        hypnosValues.push(0);
+      }
+      targetValues.push(hourlyTarget);
     }
-    
-    Chart.defaults.font.family = "'Lora', Georgia, serif";
-    Chart.defaults.color = '#4A6A7D';
-    
-    chartsRef.current.hourlyChart = new Chart(ctx, {
+
+    chartsRef.current.hourlyDashboard = new Chart(canvas, {
       type: 'bar',
       data: {
         labels: hours,
         datasets: [
           {
             label: 'Spring',
-            data: springData,
-            backgroundColor: 'rgba(46,122,171,0.7)',
+            data: springValues,
+            backgroundColor: 'rgba(46,122,171,0.75)',
             borderColor: '#2E7AAB',
             borderWidth: 1
           },
           {
             label: 'Hypnos',
-            data: hypnosData,
-            backgroundColor: 'rgba(27,79,106,0.7)',
+            data: hypnosValues,
+            backgroundColor: 'rgba(27,79,106,0.75)',
             borderColor: '#1B4F6A',
             borderWidth: 1
           },
           {
-            label: 'Target',
-            data: targetData,
+            label: 'Hourly Target',
+            data: targetValues,
             type: 'line',
             borderColor: '#C9952E',
             borderDash: [4, 4],
-            borderWidth: 1.5,
+            borderWidth: 2,
             pointRadius: 0,
-            backgroundColor: 'transparent',
             fill: false
           }
         ]
@@ -227,762 +241,251 @@ function App() {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            position: 'top',
-            labels: { boxWidth: 10, padding: 14, font: { size: 10 } }
-          },
+          legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { family: "'Lora', serif", size: 10 } } },
           tooltip: { mode: 'index' }
         },
         scales: {
-          x: {
-            grid: { color: '#EEF5FA' },
-            ticks: { font: { size: 10 } },
-            stacked: true
-          },
-          y: {
-            grid: { color: '#EEF5FA' },
-            ticks: { font: { size: 10 } },
-            stacked: true,
-            suggestedMin: 0
-          }
+          x: { grid: { color: '#EEF5FA' }, stacked: true },
+          y: { grid: { color: '#EEF5FA' }, stacked: true, suggestedMin: 0 }
         }
       }
     });
   };
-  
-  // Simulate HMI push via backend
-  const simulateHMI = async () => {
-    try {
-      const newEvent = await productionApi.triggerSimulatorEvent();
-      
-      // Update HMI log with new event
-      const newRecord = {
-        time: new Date(newEvent.completionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: newEvent.productType === 'SPRING' ? 'Spring' : 'Hypnos',
-        variety: newEvent.variety || 'Standard',
-        size: newEvent.size,
-        count: newEvent.quantity,
-        cycle: newEvent.cycleTime || 0,
-        line: newEvent.productionLine || 'Line 1',
-        status: newEvent.status || 'COMPLETED'
-      };
-      
-      setHmiLog(prev => {
-        const updated = [...prev, newRecord];
-        if (updated.length > 20) updated.shift();
-        return updated;
-      });
-      
-      // Refresh dashboard to show updated data
-      initDashboard();
-      
-    } catch (err) {
-      console.error('Error simulating HMI event:', err);
-      setError('Failed to simulate HMI event');
-    }
-  };
-  
-  // Refresh data from backend
-  const refreshData = () => {
-    initDashboard();
-  };
-  
-  // Handle interval change
-  const handleIntervalChange = (e) => {
-    const mins = parseInt(e.target.value);
-    setIntervalMins(mins);
-    // Reset countdown display
-    setCountdown(`${mins}:00`);
-  };
-  
-  // Fetch simulator status
-  const fetchSimulatorStatus = async () => {
-    try {
-      const status = await productionApi.getSimulatorStatus();
-      setSimulatorStatus(status);
-    } catch (err) {
-      console.error('Error fetching simulator status:', err);
-    }
-  };
-  
-  // Fetch daily production data
-  const fetchDailyData = async () => {
+
+  // Fetch Daily Page Details
+  const fetchDailyDetails = async () => {
     try {
       const data = await productionApi.getDailyProduction();
-      setDailyData(data);
-    } catch (err) {
-      console.error('Error fetching daily data:', err);
-    }
-  };
-  
-  // Fetch weekly production data
-  const fetchWeeklyData = async () => {
-    try {
-      const data = await productionApi.getWeeklyProduction();
-      setWeeklyData(data);
-    } catch (err) {
-      console.error('Error fetching weekly data:', err);
-    }
-  };
-  
-  // Fetch monthly production data
-  const fetchMonthlyData = async () => {
-    try {
-      const data = await productionApi.getMonthlyProduction();
-      setMonthlyData(data);
-    } catch (err) {
-      console.error('Error fetching monthly data:', err);
-    }
-  };
-  
-  // Fetch and display detailed hourly data
-  const fetchHourlyDetails = async () => {
-    try {
-      const data = await productionApi.getHourlyProduction();
-      
-      // Calculate current hour totals
-      const currentHour = new Date().getHours();
-      let currentHourTotal = 0;
-      let currentHourSpring = 0;
-      let currentHourHypnos = 0;
-      
-      if (data.spring[currentHour]) {
-        currentHourSpring = data.spring[currentHour];
-        currentHourHypnos = data.hypnos[currentHour];
-        currentHourTotal = currentHourSpring + currentHourHypnos;
+      if (data && data.length > 0) {
+        setDailyData(data);
+        renderDailyChart(data);
+        renderDailyVarietyChart(data[0]);
       }
-      
-      // Find best and worst hours
-      let bestHour = { hour: '--', total: 0 };
-      let worstHour = { hour: '--', total: Infinity };
-      
-      for (let i = 0; i < 24; i++) {
-        const total = (data.spring[i] || 0) + (data.hypnos[i] || 0);
-        if (total > 0 && total > bestHour.total) {
-          bestHour = { hour: `${i}:00`, total };
-        }
-        if (total > 0 && total < worstHour.total) {
-          worstHour = { hour: `${i}:00`, total };
-        }
-      }
-      
-      // Update UI
-      const hourlyTotalEl = document.getElementById('hourly-total');
-      const hourlySpringEl = document.getElementById('hourly-spring');
-      const hourlyHypnosEl = document.getElementById('hourly-hypnos');
-      const bestHourEl = document.getElementById('best-hour');
-      const worstHourEl = document.getElementById('worst-hour');
-      
-      if (hourlyTotalEl) hourlyTotalEl.textContent = currentHourTotal;
-      if (hourlySpringEl) hourlySpringEl.textContent = currentHourSpring;
-      if (hourlyHypnosEl) hourlyHypnosEl.textContent = currentHourHypnos;
-      if (bestHourEl) bestHourEl.textContent = bestHour.hour !== '--' ? `${bestHour.hour} (${bestHour.total})` : '--';
-      if (worstHourEl) worstHourEl.textContent = worstHour.hour !== '--' ? `${worstHour.hour} (${worstHour.total})` : '--';
-      
-      // Create hourly trend chart
-      createHourlyTrendChart(data);
-      
-      // Create hourly size mix chart
-      createHourlySizeChart(data);
-      
-      // Populate hourly table
-      populateHourlyTable(data);
-      
     } catch (err) {
-      console.error('Error fetching hourly details:', err);
+      console.error('Error fetching daily details:', err);
     }
   };
-  
-  const createHourlyTrendChart = (data) => {
-    const ctx = document.getElementById('hourlyTrendChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.hourlyTrendChart) {
-      chartsRef.current.hourlyTrendChart.destroy();
+
+  const renderDailyChart = (data) => {
+    const canvas = document.getElementById('dailyChart');
+    if (!canvas) return;
+
+    if (chartsRef.current.dailyChart) {
+      chartsRef.current.dailyChart.destroy();
     }
-    
-    const hours = [];
-    const springData = [];
-    const hypnosData = [];
-    const currentHour = new Date().getHour();
-    
-    for (let i = 0; i < 24; i++) {
-      const hour = (6 + i) % 24; // Start from 6 AM
-      hours.push(`${hour}:00`);
-      springData.push(data.spring[i] || 0);
-      hypnosData.push(data.hypnos[i] || 0);
-    }
-    
-    Chart.defaults.font.family = "'Lora', Georgia, serif";
-    Chart.defaults.color = '#4A6A7D';
-    
-    chartsRef.current.hourlyTrendChart = new Chart(ctx, {
+
+    const reversed = [...data].reverse();
+    const labels = reversed.map(d => d.date);
+    const spring = reversed.map(d => d.spring || 0);
+    const hypnos = reversed.map(d => d.hypnos || 0);
+
+    chartsRef.current.dailyChart = new Chart(canvas, {
       type: 'bar',
       data: {
-        labels: hours,
+        labels: labels,
         datasets: [
-          {
-            label: 'Spring',
-            data: springData,
-            backgroundColor: 'rgba(46,122,171,0.7)',
-            borderColor: '#2E7AAB',
-            borderWidth: 1
-          },
-          {
-            label: 'Hypnos',
-            data: hypnosData,
-            backgroundColor: 'rgba(27,79,106,0.7)',
-            borderColor: '#1B4F6A',
-            borderWidth: 1
-          }
+          { label: 'Spring', data: spring, backgroundColor: 'rgba(46,122,171,0.75)', borderColor: '#2E7AAB', borderWidth: 1 },
+          { label: 'Hypnos', data: hypnos, backgroundColor: 'rgba(27,79,106,0.75)', borderColor: '#1B4F6A', borderWidth: 1 }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { family: "'Lora', serif", size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, stacked: true },
+          y: { grid: { color: '#EEF5FA' }, stacked: true, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+
+  const renderDailyVarietyChart = (todayData) => {
+    const canvas = document.getElementById('dailyVarietyChart');
+    if (!canvas || !todayData) return;
+
+    if (chartsRef.current.dailyVarietyChart) {
+      chartsRef.current.dailyVarietyChart.destroy();
+    }
+
+    chartsRef.current.dailyVarietyChart = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: ['King', 'Queen', 'Double', 'Single'],
+        datasets: [{
+          data: [todayData.king || 0, todayData.queen || 0, todayData.double || 0, todayData.single || 0],
+          backgroundColor: ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'],
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { family: "'Lora', serif", size: 10 } } } },
+        cutout: '65%'
+      }
+    });
+  };
+
+  // Fetch Weekly Page Details
+  const fetchWeeklyDetails = async () => {
+    try {
+      const res = await productionApi.getWeeklyProduction();
+      if (res) {
+        const summary = res.weeklySummary || [];
+        const fulfilment = res.productFulfilment || [];
+        setWeeklyData(summary);
+        renderWeeklyChart(summary);
+        renderFulfilmentChart(fulfilment);
+      }
+    } catch (err) {
+      console.error('Error fetching weekly details:', err);
+    }
+  };
+
+  const renderWeeklyChart = (summary) => {
+    const canvas = document.getElementById('weeklyChart');
+    if (!canvas) return;
+
+    if (chartsRef.current.weeklyChart) {
+      chartsRef.current.weeklyChart.destroy();
+    }
+
+    const reversed = [...summary].reverse();
+    const weeks = reversed.map(w => w.week);
+    const spring = reversed.map(w => w.spring || 0);
+    const hypnos = reversed.map(w => w.hypnos || 0);
+    const target = reversed.map(w => w.target || 3936);
+
+    chartsRef.current.weeklyChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: weeks,
+        datasets: [
+          { label: 'Spring', data: spring, backgroundColor: 'rgba(46,122,171,0.75)', borderColor: '#2E7AAB', borderWidth: 1 },
+          { label: 'Hypnos', data: hypnos, backgroundColor: 'rgba(27,79,106,0.75)', borderColor: '#1B4F6A', borderWidth: 1 },
+          { label: 'Target', data: target, type: 'line', borderColor: '#3E9AD0', borderWidth: 2, pointRadius: 0, fill: false }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { family: "'Lora', serif", size: 10 } } } },
+        scales: {
+          x: { grid: { color: '#EEF5FA' }, stacked: true },
+          y: { grid: { color: '#EEF5FA' }, stacked: true, suggestedMin: 0 }
+        }
+      }
+    });
+  };
+
+  // Replaced Day-of-Week Pattern with "Order Fulfilment by Product"
+  const renderFulfilmentChart = (fulfilment) => {
+    const canvas = document.getElementById('fulfilmentChart');
+    if (!canvas) return;
+
+    if (chartsRef.current.fulfilmentChart) {
+      chartsRef.current.fulfilmentChart.destroy();
+    }
+
+    const labels = fulfilment.map(f => f.product);
+    const planned = fulfilment.map(f => f.planned);
+    const fulfilled = fulfilment.map(f => f.fulfilled);
+
+    chartsRef.current.fulfilmentChart = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          { label: 'Target / Planned', data: planned, backgroundColor: 'rgba(122,157,181,0.5)', borderColor: '#7A9DB5', borderWidth: 1 },
+          { label: 'Produced / Fulfilled', data: fulfilled, backgroundColor: 'rgba(42,125,91,0.8)', borderColor: '#2A7D5B', borderWidth: 1 }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } }
+          legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { family: "'Lora', serif", size: 10 } } },
+          tooltip: { mode: 'index' }
         },
         scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 9 } } },
+          y: { grid: { color: '#EEF5FA' }, suggestedMin: 0 }
         }
       }
     });
   };
-  
-  const createHourlySizeChart = (data) => {
-    const ctx = document.getElementById('hourlySizeChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.hourlySizeChart) {
-      chartsRef.current.hourlySizeChart.destroy();
-    }
-    
-    // Calculate size distribution per hour (simplified for demo)
-    const hours = [];
-    const kingData = [];
-    const queenData = [];
-    const doubleData = [];
-    const singleData = [];
-    
-    for (let i = 0; i < 24; i++) {
-      const hour = (6 + i) % 24;
-      hours.push(`${hour}:00`);
-      const total = (data.spring[i] || 0) + (data.hypnos[i] || 0);
-      // Simplified size distribution (would need real data from backend)
-      kingData.push(Math.round(total * 0.3));
-      queenData.push(Math.round(total * 0.35));
-      doubleData.push(Math.round(total * 0.25));
-      singleData.push(Math.round(total * 0.1));
-    }
-    
-    chartsRef.current.hourlySizeChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: hours,
-        datasets: [
-          { label: 'King', data: kingData, borderColor: '#2E7AAB', tension: 0.4, fill: false },
-          { label: 'Queen', data: queenData, borderColor: '#1B4F6A', tension: 0.4, fill: false },
-          { label: 'Double', data: doubleData, borderColor: '#3E9AD0', tension: 0.4, fill: false },
-          { label: 'Single', data: singleData, borderColor: '#7ABCD5', tension: 0.4, fill: false }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
-        scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
-        }
-      }
-    });
-  };
-  
-  const populateHourlyTable = (data) => {
-    const tbody = document.getElementById('hourly-table-body');
-    if (!tbody) return;
-    
-    const currentHour = new Date().getHour();
-    let html = '';
-    
-    for (let i = 0; i < 24; i++) {
-      const hour = (6 + i) % 24;
-      const spring = data.spring[i] || 0;
-      const hypnos = data.hypnos[i] || 0;
-      const total = spring + hypnos;
-      const target = 120;
-      const vsTarget = total > 0 ? Math.round((total / target) * 100) : 0;
-      
-      // Simplified size distribution
-      const king = Math.round(total * 0.3);
-      const queen = Math.round(total * 0.35);
-      const doubleSize = Math.round(total * 0.25);
-      const single = Math.round(total * 0.1);
-      
-      const rowClass = hour === currentHour ? 'highlight-row' : '';
-      
-      html += `
-        <tr class="${rowClass}">
-          <td>${hour}:00</td>
-          <td className="num">${spring}</td>
-          <td className="num">${hypnos}</td>
-          <td className="num">${total}</td>
-          <td className="num">${king}</td>
-          <td className="num">${queen}</td>
-          <td className="num">${doubleSize}</td>
-          <td className="num">${single}</td>
-          <td className="num">${vsTarget}%</td>
-        </tr>
-      `;
-    }
-    
-    tbody.innerHTML = html;
-  };
-  
-  // Fetch and display detailed daily data
-  const fetchDailyDetails = async () => {
-    try {
-      const data = await productionApi.getDailyProduction();
-      
-      if (!data || data.length === 0) return;
-      
-      // Calculate daily KPIs
-      const today = data[0];
-      const yesterday = data[1] || { total: 0 };
-      
-      const last7Days = data.slice(0, 7);
-      const total7Days = last7Days.reduce((sum, day) => sum + (day.total || 0), 0);
-      const avgDaily = Math.round(total7Days / 7);
-      const bestDay = Math.max(...last7Days.map(d => d.total || 0));
-      
-      // Update UI
-      const dailyTodayEl = document.getElementById('daily-today');
-      const dailyYesterdayEl = document.getElementById('daily-yesterday');
-      const dailyBestEl = document.getElementById('daily-best');
-      const dailyAvgEl = document.getElementById('daily-avg');
-      const dailyDowntimeEl = document.getElementById('daily-downtime');
-      
-      if (dailyTodayEl) dailyTodayEl.textContent = today.total || 0;
-      if (dailyYesterdayEl) dailyYesterdayEl.textContent = yesterday.total || 0;
-      if (dailyBestEl) dailyBestEl.textContent = bestDay;
-      if (dailyAvgEl) dailyAvgEl.textContent = avgDaily;
-      if (dailyDowntimeEl) dailyDowntimeEl.textContent = today.downtime || '--';
-      
-      // Create daily chart
-      createDailyChart(data);
-      
-      // Create daily variety chart
-      createDailyVarietyChart(today);
-      
-      // Populate daily table
-      populateDailyTable(data);
-      
-    } catch (err) {
-      console.error('Error fetching daily details:', err);
-    }
-  };
-  
-  const createDailyChart = (data) => {
-    const ctx = document.getElementById('dailyChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.dailyChart) {
-      chartsRef.current.dailyChart.destroy();
-    }
-    
-    const dates = data.map(d => d.date);
-    const springData = data.map(d => d.spring || 0);
-    const hypnosData = data.map(d => d.hypnos || 0);
-    
-    Chart.defaults.font.family = "'Lora', Georgia, serif";
-    Chart.defaults.color = '#4A6A7D';
-    
-    chartsRef.current.dailyChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: dates,
-        datasets: [
-          {
-            label: 'Spring',
-            data: springData,
-            backgroundColor: 'rgba(46,122,171,0.7)',
-            borderColor: '#2E7AAB',
-            borderWidth: 1
-          },
-          {
-            label: 'Hypnos',
-            data: hypnosData,
-            backgroundColor: 'rgba(27,79,106,0.7)',
-            borderColor: '#1B4F6A',
-            borderWidth: 1
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
-        scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
-        }
-      }
-    });
-  };
-  
-  const createDailyVarietyChart = (todayData) => {
-    const ctx = document.getElementById('dailyVarietyChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.dailyVarietyChart) {
-      chartsRef.current.dailyVarietyChart.destroy();
-    }
-    
-    // Simplified variety distribution
-    const total = todayData.total || 0;
-    const king = Math.round(total * 0.3);
-    const queen = Math.round(total * 0.35);
-    const doubleSize = Math.round(total * 0.25);
-    const single = Math.round(total * 0.1);
-    
-    chartsRef.current.dailyVarietyChart = new Chart(ctx, {
-      type: 'doughnut',
-      data: {
-        labels: ['King', 'Queen', 'Double', 'Single'],
-        datasets: [{
-          data: [king, queen, doubleSize, single],
-          backgroundColor: ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'],
-          borderWidth: 2,
-          borderColor: '#fff'
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
-        cutout: '65%'
-      }
-    });
-  };
-  
-  const populateDailyTable = (data) => {
-    const tbody = document.getElementById('daily-table-body');
-    if (!tbody) return;
-    
-    let html = '';
-    
-    data.forEach(day => {
-      const total = day.total || 0;
-      const target = 960;
-      const efficiency = total > 0 ? Math.round((total / target) * 100) : 0;
-      
-      // Simplified size distribution
-      const king = Math.round(total * 0.3);
-      const queen = Math.round(total * 0.35);
-      const doubleSize = Math.round(total * 0.25);
-      const single = Math.round(total * 0.1);
-      
-      html += `
-        <tr>
-          <td>${day.date}</td>
-          <td className="num">${day.spring || 0}</td>
-          <td className="num">${day.hypnos || 0}</td>
-          <td className="num">${total}</td>
-          <td className="num">${king}</td>
-          <td className="num">${queen}</td>
-          <td className="num">${doubleSize}</td>
-          <td className="num">${single}</td>
-          <td className="num">${efficiency}%</td>
-          <td className="num">${day.downtime || '--'} min</td>
-        </tr>
-      `;
-    });
-    
-    tbody.innerHTML = html;
-  };
-  
-  // Fetch and display detailed weekly data
-  const fetchWeeklyDetails = async () => {
-    try {
-      const data = await productionApi.getWeeklyProduction();
-      
-      if (!data || data.length === 0) return;
-      
-      // Calculate weekly KPIs
-      const thisWeek = data[0];
-      const lastWeek = data[1] || { total: 0 };
-      
-      // Update UI
-      const weeklyThisEl = document.getElementById('weekly-this');
-      const weeklyLastEl = document.getElementById('weekly-last');
-      const weeklySpringEl = document.getElementById('weekly-spring');
-      const weeklyHypnosEl = document.getElementById('weekly-hypnos');
-      const weeklyEffEl = document.getElementById('weekly-eff');
-      
-      if (weeklyThisEl) weeklyThisEl.textContent = thisWeek.total || 0;
-      if (weeklyLastEl) weeklyLastEl.textContent = lastWeek.total || 0;
-      if (weeklySpringEl) weeklySpringEl.textContent = thisWeek.spring || 0;
-      if (weeklyHypnosEl) weeklyHypnosEl.textContent = thisWeek.hypnos || 0;
-      if (weeklyEffEl) weeklyEffEl.textContent = thisWeek.efficiency || '--';
-      
-      // Create weekly chart
-      createWeeklyChart(data);
-      
-      // Create day-of-week pattern chart
-      createDowChart(data);
-      
-      // Populate weekly table
-      populateWeeklyTable(data);
-      
-    } catch (err) {
-      console.error('Error fetching weekly details:', err);
-    }
-  };
-  
-  const createWeeklyChart = (data) => {
-    const ctx = document.getElementById('weeklyChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.weeklyChart) {
-      chartsRef.current.weeklyChart.destroy();
-    }
-    
-    const weeks = data.map(d => d.week);
-    const springData = data.map(d => d.spring || 0);
-    const hypnosData = data.map(d => d.hypnos || 0);
-    const targetData = data.map(d => d.target || 4800);
-    
-    Chart.defaults.font.family = "'Lora', Georgia, serif";
-    Chart.defaults.color = '#4A6A7D';
-    
-    chartsRef.current.weeklyChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: weeks,
-        datasets: [
-          {
-            label: 'Spring',
-            data: springData,
-            backgroundColor: 'rgba(46,122,171,0.7)',
-            borderColor: '#2E7AAB',
-            borderWidth: 1
-          },
-          {
-            label: 'Hypnos',
-            data: hypnosData,
-            backgroundColor: 'rgba(27,79,106,0.7)',
-            borderColor: '#1B4F6A',
-            borderWidth: 1
-          },
-          {
-            label: 'Target',
-            data: targetData,
-            type: 'line',
-            borderColor: '#3E9AD0',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 0
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
-        scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
-        }
-      }
-    });
-  };
-  
-  const createDowChart = (data) => {
-    const ctx = document.getElementById('dowChart');
-    if (!ctx) return;
-    
-    if (chartsRef.current.dowChart) {
-      chartsRef.current.dowChart.destroy();
-    }
-    
-    // Simplified day-of-week pattern
-    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const avgOutput = [650, 720, 680, 750, 690, 400, 300]; // Placeholder data
-    
-    chartsRef.current.dowChart = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels: weekdays,
-        datasets: [{
-          label: 'Avg Output',
-          data: avgOutput,
-          backgroundColor: 'rgba(46,122,171,0.7)',
-          borderColor: '#2E7AAB',
-          borderWidth: 1
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
-        }
-      }
-    });
-  };
-  
-  const populateWeeklyTable = (data) => {
-    const tbody = document.getElementById('weekly-table-body');
-    if (!tbody) return;
-    
-    let html = '';
-    
-    data.forEach(week => {
-      const total = week.total || 0;
-      const target = week.target || 4800;
-      const attainment = total > 0 ? Math.round((total / target) * 100) : 0;
-      
-      html += `
-        <tr>
-          <td>${week.week}</td>
-          <td className="num">${week.spring || 0}</td>
-          <td className="num">${week.hypnos || 0}</td>
-          <td className="num">${total}</td>
-          <td className="num">${target}</td>
-          <td className="num">${attainment}%</td>
-          <td className="num">${week.efficiency || '--'}%</td>
-        </tr>
-      `;
-    });
-    
-    tbody.innerHTML = html;
-  };
-  
-  // Fetch and display detailed monthly data
+
+  // Fetch Monthly Page Details
   const fetchMonthlyDetails = async () => {
     try {
       const data = await productionApi.getMonthlyProduction();
-      
-      if (!data || data.length === 0) return;
-      
-      // Calculate monthly KPIs
-      const thisMonth = data[0];
-      const lastMonth = data[1] || { total: 0 };
-      
-      // Calculate YTD totals
-      const ytdSpring = data.reduce((sum, m) => sum + (m.spring || 0), 0);
-      const ytdHypnos = data.reduce((sum, m) => sum + (m.hypnos || 0), 0);
-      const ytdTotal = ytdSpring + ytdHypnos;
-      
-      // Update UI
-      const monthlyThisEl = document.getElementById('monthly-this');
-      const monthlyLastEl = document.getElementById('monthly-last');
-      const monthlySpringYtdEl = document.getElementById('monthly-spring-ytd');
-      const monthlyHypnosYtdEl = document.getElementById('monthly-hypnos-ytd');
-      const monthlyYtdEl = document.getElementById('monthly-ytd');
-      
-      if (monthlyThisEl) monthlyThisEl.textContent = thisMonth.total || 0;
-      if (monthlyLastEl) monthlyLastEl.textContent = lastMonth.total || 0;
-      if (monthlySpringYtdEl) monthlySpringYtdEl.textContent = ytdSpring;
-      if (monthlyHypnosYtdEl) monthlyHypnosYtdEl.textContent = ytdHypnos;
-      if (monthlyYtdEl) monthlyYtdEl.textContent = ytdTotal;
-      
-      // Create monthly chart
-      createMonthlyChart(data);
-      
-      // Create YTD size mix chart
-      createMonthlySizeChart(ytdTotal);
-      
-      // Populate monthly table
-      populateMonthlyTable(data);
-      
+      if (data && data.length > 0) {
+        setMonthlyData(data);
+        renderMonthlyChart(data);
+        renderMonthlySizeChart(data);
+      }
     } catch (err) {
       console.error('Error fetching monthly details:', err);
     }
   };
-  
-  const createMonthlyChart = (data) => {
-    const ctx = document.getElementById('monthlyChart');
-    if (!ctx) return;
-    
+
+  const renderMonthlyChart = (data) => {
+    const canvas = document.getElementById('monthlyChart');
+    if (!canvas) return;
+
     if (chartsRef.current.monthlyChart) {
       chartsRef.current.monthlyChart.destroy();
     }
-    
-    const months = data.map(d => d.month);
-    const springData = data.map(d => d.spring || 0);
-    const hypnosData = data.map(d => d.hypnos || 0);
-    const targetData = data.map(d => d.target || 20000);
-    
-    Chart.defaults.font.family = "'Lora', Georgia, serif";
-    Chart.defaults.color = '#4A6A7D';
-    
-    chartsRef.current.monthlyChart = new Chart(ctx, {
+
+    const reversed = [...data].reverse();
+    const months = reversed.map(m => m.month);
+    const spring = reversed.map(m => m.spring || 0);
+    const hypnos = reversed.map(m => m.hypnos || 0);
+    const target = reversed.map(m => m.target || 16400);
+
+    chartsRef.current.monthlyChart = new Chart(canvas, {
       type: 'bar',
       data: {
         labels: months,
         datasets: [
-          {
-            label: 'Spring',
-            data: springData,
-            backgroundColor: 'rgba(46,122,171,0.7)',
-            borderColor: '#2E7AAB',
-            borderWidth: 1
-          },
-          {
-            label: 'Hypnos',
-            data: hypnosData,
-            backgroundColor: 'rgba(27,79,106,0.7)',
-            borderColor: '#1B4F6A',
-            borderWidth: 1
-          },
-          {
-            label: 'Target',
-            data: targetData,
-            type: 'line',
-            borderColor: '#3E9AD0',
-            backgroundColor: 'transparent',
-            borderWidth: 2,
-            pointRadius: 0
-          }
+          { label: 'Spring', data: spring, backgroundColor: 'rgba(46,122,171,0.75)', borderColor: '#2E7AAB', borderWidth: 1 },
+          { label: 'Hypnos', data: hypnos, backgroundColor: 'rgba(27,79,106,0.75)', borderColor: '#1B4F6A', borderWidth: 1 },
+          { label: 'Target', data: target, type: 'line', borderColor: '#3E9AD0', borderWidth: 2, pointRadius: 0, fill: false }
         ]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 14, font: { size: 10 } } } },
+        plugins: { legend: { position: 'top', labels: { boxWidth: 10, padding: 12, font: { family: "'Lora', serif", size: 10 } } } },
         scales: {
-          x: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } } },
-          y: { grid: { color: '#EEF5FA' }, ticks: { font: { size: 10 } }, suggestedMin: 0 }
+          x: { grid: { color: '#EEF5FA' }, stacked: true },
+          y: { grid: { color: '#EEF5FA' }, stacked: true, suggestedMin: 0 }
         }
       }
     });
   };
-  
-  const createMonthlySizeChart = (ytdTotal) => {
-    const ctx = document.getElementById('monthlySizeChart');
-    if (!ctx) return;
-    
+
+  const renderMonthlySizeChart = (data) => {
+    const canvas = document.getElementById('monthlySizeChart');
+    if (!canvas || !data) return;
+
     if (chartsRef.current.monthlySizeChart) {
       chartsRef.current.monthlySizeChart.destroy();
     }
-    
-    // Simplified YTD size distribution
-    const king = Math.round(ytdTotal * 0.3);
-    const queen = Math.round(ytdTotal * 0.35);
-    const doubleSize = Math.round(ytdTotal * 0.25);
-    const single = Math.round(ytdTotal * 0.1);
-    
-    chartsRef.current.monthlySizeChart = new Chart(ctx, {
+
+    const totalKing = data.reduce((s, m) => s + (m.king || 0), 0);
+    const totalQueen = data.reduce((s, m) => s + (m.queen || 0), 0);
+    const totalDouble = data.reduce((s, m) => s + (m.double || 0), 0);
+    const totalSingle = data.reduce((s, m) => s + (m.single || 0), 0);
+
+    chartsRef.current.monthlySizeChart = new Chart(canvas, {
       type: 'doughnut',
       data: {
         labels: ['King', 'Queen', 'Double', 'Single'],
         datasets: [{
-          data: [king, queen, doubleSize, single],
+          data: [totalKing, totalQueen, totalDouble, totalSingle],
           backgroundColor: ['#2E7AAB', '#1B4F6A', '#3E9AD0', '#7ABCD5'],
           borderWidth: 2,
           borderColor: '#fff'
@@ -991,135 +494,126 @@ function App() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { size: 10 } } } },
+        plugins: { legend: { position: 'right', labels: { boxWidth: 10, padding: 10, font: { family: "'Lora', serif", size: 10 } } } },
         cutout: '65%'
       }
     });
   };
-  
-  const populateMonthlyTable = (data) => {
-    const tbody = document.getElementById('monthly-table-body');
-    if (!tbody) return;
-    
-    let html = '';
-    
-    data.forEach(month => {
-      const total = month.total || 0;
-      const target = month.target || 20000;
-      const attainment = total > 0 ? Math.round((total / target) * 100) : 0;
-      
-      // Simplified size distribution
-      const king = Math.round(total * 0.3);
-      const queen = Math.round(total * 0.35);
-      const doubleSize = Math.round(total * 0.25);
-      const single = Math.round(total * 0.1);
-      
-      html += `
-        <tr>
-          <td>${month.month}</td>
-          <td className="num">${month.spring || 0}</td>
-          <td className="num">${month.hypnos || 0}</td>
-          <td className="num">${total}</td>
-          <td className="num">${target}</td>
-          <td className="num">${attainment}%</td>
-          <td className="num">${king}</td>
-          <td className="num">${queen}</td>
-          <td className="num">${doubleSize}</td>
-          <td className="num">${single}</td>
-        </tr>
-      `;
+
+  // Helper calculations for 8 targets
+  const calculateSpringHourlyTarget = () => {
+    const t = settingsData.productionTargets || {};
+    return (t.SPRING_SINGLE || 0) + (t.SPRING_DOUBLE || 0) + (t.SPRING_QUEEN || 0) + (t.SPRING_KING || 0);
+  };
+
+  const calculateHypnosHourlyTarget = () => {
+    const t = settingsData.productionTargets || {};
+    return (t.HYPNOS_SINGLE || 0) + (t.HYPNOS_DOUBLE || 0) + (t.HYPNOS_QUEEN || 0) + (t.HYPNOS_KING || 0);
+  };
+
+  const calculateTotalHourlyTarget = () => {
+    return calculateSpringHourlyTarget() + calculateHypnosHourlyTarget();
+  };
+
+  // Handle Tab Change
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    if (tab === 'dashboard') {
+      fetchDashboardData();
+    } else if (tab === 'daily') {
+      fetchDailyDetails();
+    } else if (tab === 'weekly') {
+      fetchWeeklyDetails();
+    } else if (tab === 'monthly') {
+      fetchMonthlyDetails();
+    } else if (tab === 'settings') {
+      loadSettings();
+    }
+  };
+
+  // Handle Interval Dropdown Change
+  const handleIntervalChange = (e) => {
+    const mins = parseInt(e.target.value, 10);
+    setIntervalMins(mins);
+    setSecondsRemaining(mins * 60);
+  };
+
+  // Handle Target Input Change
+  const handleTargetChange = (key, value) => {
+    const num = Math.max(0, parseInt(value, 10) || 0);
+    setSettingsData(prev => ({
+      ...prev,
+      productionTargets: {
+        ...prev.productionTargets,
+        [key]: num
+      }
+    }));
+  };
+
+  // Handle Shift Time Edit
+  const handleShiftChange = (index, field, value) => {
+    setSettingsData(prev => {
+      const updated = [...prev.shiftConfigurations];
+      updated[index] = { ...updated[index], [field]: value };
+      return { ...prev, shiftConfigurations: updated };
     });
-    
-    tbody.innerHTML = html;
   };
-  
-  // Make ring SVG
-  const makeRing = (label, pct, color) => {
-    pct = Math.min(100, pct);
-    const r = 40;
-    const circ = 2 * Math.PI * r;
-    const dash = (pct / 100) * circ;
-    
-    return (
-      <div className="ring-item">
-        <svg className="ring-svg" width="100" height="100" viewBox="0 0 100 100">
-          <circle cx="50" cy="50" r={r} fill="none" stroke="#DDEEF8" strokeWidth="8"/>
-          <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="8"
-            strokeDasharray={`${dash.toFixed(1)} ${circ.toFixed(1)}`}
-            strokeDashoffset={(circ / 4).toFixed(1)}
-            strokeLinecap="round" transform="rotate(-90 50 50)"
-            style={{transition: 'stroke-dasharray 1s ease'}}/>
-          <text x="50" y="46" textAnchor="middle" fontFamily="Playfair Display,serif" fontSize="16" fontWeight="700" fill="#1A2E3B">{pct}%</text>
-          <text x="50" y="60" textAnchor="middle" fontFamily="Lora,serif" fontSize="9" fill="#7A9DB5">{label}</text>
-        </svg>
-      </div>
-    );
+
+  // Save Settings to Backend
+  const handleSaveSettings = async (e) => {
+    if (e) e.preventDefault();
+    setIsLoading(true);
+    setSettingsSaveMessage(null);
+    try {
+      const saved = await productionApi.updateSettings({
+        ...settingsData,
+        dashboardUpdateInterval: intervalMins
+      });
+      setSettingsData(saved);
+      setSettingsSaveMessage({ type: 'success', text: 'Settings saved successfully to database.' });
+      
+      // Update local timer and refetch dashboard
+      setSecondsRemaining(saved.dashboardUpdateInterval * 60);
+      fetchDashboardData();
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      setSettingsSaveMessage({ type: 'error', text: 'Failed to save settings to backend.' });
+    } finally {
+      setIsLoading(false);
+    }
   };
-  
-  // Initialize on mount
+
+  // Countdown timer effect
   useEffect(() => {
-    initDashboard();
+    if (timerRef.current) clearInterval(timerRef.current);
+
+    timerRef.current = setInterval(() => {
+      setSecondsRemaining(prev => {
+        if (prev <= 1) {
+          // Trigger auto-update
+          fetchDashboardData();
+          if (activeTab === 'daily') fetchDailyDetails();
+          if (activeTab === 'weekly') fetchWeeklyDetails();
+          if (activeTab === 'monthly') fetchMonthlyDetails();
+          return intervalMins * 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timerRef.current);
+  }, [intervalMins, activeTab]);
+
+  // Initial mount effect
+  useEffect(() => {
+    loadSettings();
+    fetchDashboardData();
     updateClock();
-    fetchSimulatorStatus();
-    fetchDailyData();
-    fetchWeeklyData();
-    fetchMonthlyData();
-    
-    const clockInterval = setInterval(updateClock, 1000);
-    
-    return () => clearInterval(clockInterval);
+
+    const clockTimer = setInterval(updateClock, 1000);
+    return () => clearInterval(clockTimer);
   }, []);
-  
-  // Handle tab switching
-  const handleTabChange = (tabName) => {
-    setActiveTab(tabName);
-    
-    // Fetch data when switching to specific tabs
-    if (tabName === 'hourly') {
-      fetchHourlyDetails();
-    } else if (tabName === 'daily') {
-      fetchDailyData();
-    } else if (tabName === 'weekly') {
-      fetchWeeklyData();
-    } else if (tabName === 'monthly') {
-      fetchMonthlyData();
-    }
-  };
-  
-  const getStatusClass = (status) => {
-    switch (status) {
-      case 'COMPLETED': case 'Completed': return 'status-complete';
-      case 'DELAYED': case 'Delayed': return 'status-delayed';
-      case 'IN_PROGRESS': case 'In Progress': return 'status-progress';
-      default: return 'status-progress';
-    }
-  };
-  
-  const getBadgeClass = (type) => {
-    return type === 'Spring' || type === 'SPRING' ? 'badge-spring' : 'badge-hypnos';
-  };
-  
-  // Toggle TV mode
-  const toggleTvMode = () => {
-    setTvMode(!tvMode);
-  };
-  
-  // Auto-rotation effect
-  useEffect(() => {
-    if (!autoRotate) return;
-    
-    const tabs = ['dashboard', 'hourly', 'daily', 'weekly', 'monthly'];
-    let currentIndex = tabs.indexOf(activeTab);
-    if (currentIndex === -1) currentIndex = 0;
-    
-    const interval = setInterval(() => {
-      currentIndex = (currentIndex + 1) % tabs.length;
-      setActiveTab(tabs[currentIndex]);
-    }, rotateInterval * 1000);
-    
-    return () => clearInterval(interval);
-  }, [autoRotate, rotateInterval, activeTab]);
-  
+
   return (
     <div className={tvMode ? 'tv-mode' : ''}>
       {/* HEADER */}
@@ -1137,18 +631,16 @@ function App() {
         </div>
       </header>
 
-      {/* NAV */}
+      {/* NAVIGATION: Strictly Dashboard | Daily | Weekly | Monthly | Settings */}
       <nav className="nav" style={{ display: tvMode ? 'none' : 'flex' }}>
         <button className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => handleTabChange('dashboard')}>Dashboard</button>
-        <button className={`nav-tab ${activeTab === 'hourly' ? 'active' : ''}`} onClick={() => handleTabChange('hourly')}>Hourly</button>
         <button className={`nav-tab ${activeTab === 'daily' ? 'active' : ''}`} onClick={() => handleTabChange('daily')}>Daily</button>
         <button className={`nav-tab ${activeTab === 'weekly' ? 'active' : ''}`} onClick={() => handleTabChange('weekly')}>Weekly</button>
         <button className={`nav-tab ${activeTab === 'monthly' ? 'active' : ''}`} onClick={() => handleTabChange('monthly')}>Monthly</button>
-        <button className={`nav-tab ${activeTab === 'crm' ? 'active' : ''}`} onClick={() => handleTabChange('crm')}>CRM Metrics</button>
         <button className={`nav-tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => handleTabChange('settings')}>Settings</button>
       </nav>
 
-      {/* CONTROLS BAR */}
+      {/* CONTROLS BAR: No Simulate HMI Push button */}
       <div className="controls-bar" style={{ display: tvMode ? 'none' : 'flex' }}>
         <div className="control-group">
           <span className="control-label">Update Interval</span>
@@ -1159,6 +651,7 @@ function App() {
             <option value={5}>Every 5 min (demo)</option>
           </select>
         </div>
+
         <div className="control-group">
           <span className="control-label">Line</span>
           <select className="control-select" value={lineSelect} onChange={(e) => setLineSelect(e.target.value)}>
@@ -1167,93 +660,86 @@ function App() {
             <option value="hypnos">Hypnos Line</option>
           </select>
         </div>
+
         <div className="control-group">
           <span className="control-label">Shift</span>
           <select className="control-select" value={shiftSelect} onChange={(e) => setShiftSelect(e.target.value)}>
-            <option value="current">Current Shift</option>
-            <option value="A">Shift A (06:00 – 14:00)</option>
-            <option value="B">Shift B (14:00 – 22:00)</option>
-            <option value="C">Shift C (22:00 – 06:00)</option>
+            <option value="current">Current Shift ({currentShiftInfo.shiftName})</option>
+            {(settingsData.shiftConfigurations || []).map((s, idx) => (
+              <option key={idx} value={s.shiftName}>{s.shiftName} ({s.startTime}–{s.endTime})</option>
+            ))}
           </select>
         </div>
-        <button className="control-btn secondary" onClick={refreshData} disabled={isLoading}>
+
+        <button className="control-btn secondary" onClick={() => { fetchDashboardData(); setSecondsRemaining(intervalMins * 60); }} disabled={isLoading}>
           {isLoading ? 'Refreshing...' : 'Refresh Now'}
         </button>
-        <button className="control-btn" onClick={simulateHMI}>Simulate HMI Push</button>
-        <div className="next-update">Next auto-update in <span>{countdown}</span></div>
+
+        <div className="next-update">Next auto-update in <span>{formatCountdown(secondsRemaining)}</span></div>
       </div>
 
-      {/* ERROR STATE */}
+      {/* ERROR DISPLAY */}
       {error && (
-        <div style={{ padding: '2rem', textAlign: 'center', color: '#B03A2E' }}>
+        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--danger)' }}>
           <div style={{ fontSize: '1.2rem', marginBottom: '0.5rem' }}>⚠️ {error}</div>
-          <button className="control-btn" onClick={refreshData} style={{ marginTop: '1rem' }}>Retry</button>
+          <button className="control-btn" onClick={fetchDashboardData} style={{ marginTop: '0.5rem' }}>Retry Connection</button>
         </div>
       )}
 
-      {/* LOADING STATE */}
-      {isLoading && !error && (
-        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>
-          Loading production data...
-        </div>
-      )}
-
-      {/* DASHBOARD TAB */}
-      {!isLoading && !error && (
-        <div className={`main ${activeTab === 'dashboard' ? 'active' : ''}`} id="tab-dashboard">
-          {/* KPI STRIP */}
+      {/* 1. DASHBOARD TAB */}
+      {!error && (
+        <div className={`main ${activeTab === 'dashboard' ? 'active' : ''}`}>
+          {/* KPI STRIP: 5 Cards (No Average Cycle Time, No Line Efficiency OEE card) */}
           <div className="kpi-strip">
             <div className="kpi-card spring-accent">
               <div className="kpi-label">Total Produced Today</div>
               <div className="kpi-value">{kpiData.total}</div>
               <div className="kpi-sub">units across all lines</div>
-              <div className="kpi-delta up">Live from Backend</div>
+              <div className="kpi-delta up">● Live from MySQL</div>
             </div>
+
             <div className="kpi-card spring-accent">
               <div className="kpi-label">Spring Mattresses</div>
               <div className="kpi-value">{kpiData.spring}</div>
-              <div className="kpi-sub">units today</div>
-              <div className="kpi-delta up">Live from Backend</div>
+              <div className="kpi-sub">units completed today</div>
+              <div className="kpi-delta up">Spring Production</div>
             </div>
+
             <div className="kpi-card hypnos-accent">
               <div className="kpi-label">Hypnos Mattresses</div>
               <div className="kpi-value">{kpiData.hypnos}</div>
-              <div className="kpi-sub">units today</div>
-              <div className="kpi-delta up">Live from Backend</div>
+              <div className="kpi-sub">units completed today</div>
+              <div className="kpi-delta up">Hypnos Production</div>
             </div>
+
             <div className="kpi-card success-accent">
               <div className="kpi-label">Shift Target</div>
               <div className="kpi-value">{kpiData.targetPct}</div>
               <div className="kpi-sub">{kpiData.targetSub}</div>
-              <div className="kpi-delta neutral">Current Shift</div>
+              <div className="kpi-delta neutral">{currentShiftInfo.shiftName}</div>
             </div>
+
             <div className="kpi-card warn-accent">
-              <div className="kpi-label">Avg Cycle Time</div>
-              <div className="kpi-value">{kpiData.cycle}</div>
-              <div className="kpi-sub">minutes per unit</div>
-              <div className="kpi-delta neutral">Target: 4.5 min</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-label">Line Efficiency</div>
-              <div className="kpi-value">{kpiData.eff}</div>
-              <div className="kpi-sub">OEE this shift</div>
-              <div className="kpi-delta up">Live from Backend</div>
+              <div className="kpi-label">Production Efficiency</div>
+              <div className="kpi-value">{kpiData.efficiency}%</div>
+              <div className="kpi-sub">Actual vs Scheduled Pace</div>
+              <div className="kpi-delta up">Deterministic Calculation</div>
             </div>
           </div>
 
-          {/* ROW 1: Hourly Trend + Size Breakdown */}
+          {/* ROW 1: Time-Aware Hourly Graph + Size Distribution */}
           <div className="grid-2-1">
             <div className="card">
               <div className="card-header">
                 <div>
                   <div className="card-title">Hourly Production — Today</div>
-                  <div className="card-subtitle">Spring vs Hypnos, units per hour</div>
+                  <div className="card-subtitle">Spring vs Hypnos, units per elapsed hour</div>
                 </div>
-                <span className="badge badge-success">Live</span>
+                <span className="badge badge-success">Time-Aware</span>
               </div>
               <div className="card-body">
-                <div className="chart-wrap" style={{height: '200px'}}>
-                  <canvas ref={hourlyChartRef}></canvas>
+                <div className="chart-wrap" style={{ height: '220px' }}>
+                  <canvas id="hourlyDashboardChart"></canvas>
                 </div>
               </div>
             </div>
@@ -1262,7 +748,7 @@ function App() {
               <div className="card-header">
                 <div>
                   <div className="card-title">Size Distribution</div>
-                  <div className="card-subtitle">Today's production</div>
+                  <div className="card-subtitle">Today's completed production</div>
                 </div>
               </div>
               <div className="card-body">
@@ -1270,41 +756,45 @@ function App() {
                   <div className="size-row" key={idx}>
                     <div className="size-name">{item.name}</div>
                     <div className="size-bar-wrap">
-                      <div className="size-bar" style={{width: item.pct + '%', background: item.color}}></div>
+                      <div className="size-bar" style={{ width: `${item.pct}%`, background: item.color }}></div>
                     </div>
                     <div className="size-count">{item.val}</div>
                     <div className="size-pct">{item.pct}%</div>
                   </div>
-                )) : <div style={{textAlign: 'center', color: 'var(--text-muted)'}}>No size data available</div>}
+                )) : <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>No size data available</div>}
               </div>
             </div>
           </div>
 
-          {/* ROW 2: HMI Feed + Target Progress + Efficiency */}
-          <div className="grid-3">
+          {/* ROW 2: Incoming Production Records (Live Feed) + Operational Status */}
+          <div className="grid-2-1">
             <div className="card">
               <div className="card-header">
                 <div>
-                  <div className="card-title">HMI / PLC Live Feed</div>
-                  <div className="card-subtitle">Incoming production records</div>
+                  <div className="card-title">Incoming Production Records</div>
+                  <div className="card-subtitle">Live arrival feed (1 row = 1 completed mattress)</div>
                 </div>
-                <span className="badge badge-spring">Simulated</span>
+                <span className="badge badge-spring">{settingsData.preferredMode}</span>
               </div>
-              <div className="card-body" style={{padding: '0.75rem 1rem'}}>
+              <div className="card-body" style={{ padding: '0.75rem 1.25rem' }}>
                 <div className="hmi-feed">
-                  {hmiLog.length > 0 ? hmiLog.slice(-10).reverse().map((row, idx) => (
+                  {incomingFeed.length > 0 ? incomingFeed.map((row, idx) => (
                     <div className="hmi-row" key={idx}>
-                      <div className="hmi-time">{row.time}</div>
+                      <div className="hmi-time">
+                        {new Date(row.completionTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </div>
                       <div className="hmi-type">
-                        <span className={`badge ${getBadgeClass(row.type)}`} style={{fontSize: '0.62rem'}}>{row.type}</span>
+                        <span className={`badge ${row.productType === 'SPRING' ? 'badge-spring' : 'badge-hypnos'}`} style={{ fontSize: '0.62rem' }}>
+                          {row.productType}
+                        </span>
                       </div>
-                      <div className="hmi-size">{row.size} / {row.variety}</div>
-                      <div className="hmi-count">{row.count}</div>
+                      <div className="hmi-size"><strong>{row.size}</strong> &middot; {row.variety}</div>
+                      <div className="hmi-line">{row.productionLine}</div>
                       <div className="hmi-status">
-                        <span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span>
+                        <span className="status-pill status-complete">{row.status}</span>
                       </div>
                     </div>
-                  )) : <div style={{textAlign: 'center', color: 'var(--text-muted)', padding: '1rem'}}>No production records yet</div>}
+                  )) : <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '2rem' }}>Awaiting incoming production events...</div>}
                 </div>
               </div>
             </div>
@@ -1312,16 +802,90 @@ function App() {
             <div className="card">
               <div className="card-header">
                 <div>
-                  <div className="card-title">Shift Progress</div>
-                  <div className="card-subtitle">Target attainment by line</div>
+                  <div className="card-title">Operational Status</div>
+                  <div className="card-subtitle">Downtime & Low Production Alerts</div>
                 </div>
               </div>
               <div className="card-body">
-                <div className="ring-wrap">
-                  {progressRings.map((ring, idx) => makeRing(ring.label, ring.pct, ring.color))}
+                <div style={{ marginBottom: '1rem', padding: '0.75rem', background: 'var(--container-alt)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>Downtime Today:</span>
+                    <span style={{ fontFamily: 'var(--font-display)', fontWeight: 700, fontSize: '1.1rem', color: downtimeMinutes > 0 ? 'var(--warn)' : 'var(--success)' }}>
+                      {downtimeMinutes} min
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                    Calculated strictly from stoppage intervals
+                  </div>
                 </div>
-                <div style={{marginTop: '1rem', fontSize: '0.78rem', color: 'var(--text-muted)', textAlign: 'center'}}>
-                  Shift ends at <strong>{shiftTime.endTime}</strong> &nbsp;&middot;&nbsp; <span>{shiftTime.remaining}</span> remaining
+
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem', color: 'var(--text-secondary)' }}>
+                    Active Alerts ({alerts.length})
+                  </div>
+                  {alerts.length > 0 ? alerts.map((a, idx) => (
+                    <div key={idx} style={{ padding: '0.5rem 0.75rem', background: '#FDE8E8', border: '1px solid #F9C5C5', borderRadius: '4px', marginBottom: '0.4rem', fontSize: '0.75rem' }}>
+                      <strong style={{ color: 'var(--danger)' }}>[{a.severity}] {a.alertType}:</strong> {a.message}
+                    </div>
+                  )) : (
+                    <div style={{ padding: '0.5rem', fontSize: '0.75rem', color: 'var(--success)' }}>
+                      ✓ All lines operating normally. No active low production alerts.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2. DAILY TAB */}
+      {!error && (
+        <div className={`main ${activeTab === 'daily' ? 'active' : ''}`}>
+          <div className="kpi-strip six-cards">
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">Today Total</div>
+              <div className="kpi-value">{dailyData[0] ? dailyData[0].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Yesterday</div>
+              <div className="kpi-value">{dailyData[1] ? dailyData[1].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card success-accent">
+              <div className="kpi-label">Daily Target</div>
+              <div className="kpi-value">{calculateTotalHourlyTarget() * 8}</div>
+              <div className="kpi-sub">units (8h shift)</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Best Day (14d)</div>
+              <div className="kpi-value">{dailyData.length > 0 ? Math.max(...dailyData.map(d => d.total || 0)) : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Avg Daily (14d)</div>
+              <div className="kpi-value">{dailyData.length > 0 ? Math.round(dailyData.reduce((s, d) => s + (d.total || 0), 0) / dailyData.length) : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card warn-accent">
+              <div className="kpi-label">Downtime Today</div>
+              <div className="kpi-value">{dailyData[0] ? dailyData[0].downtime : '0'}</div>
+              <div className="kpi-sub">minutes</div>
+            </div>
+          </div>
+
+          <div className="grid-2-1">
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Daily Production — Last 14 Days</div>
+                  <div className="card-subtitle">Spring vs Hypnos completed volume</div>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: '240px' }}>
+                  <canvas id="dailyChart"></canvas>
                 </div>
               </div>
             </div>
@@ -1329,62 +893,52 @@ function App() {
             <div className="card">
               <div className="card-header">
                 <div>
-                  <div className="card-title">Line Efficiency</div>
-                  <div className="card-subtitle">OEE components this shift</div>
+                  <div className="card-title">Today by Variety Mix</div>
                 </div>
               </div>
               <div className="card-body">
-                <div className="eff-meter">
-                  {efficiencyMeters.map((eff, idx) => (
-                    <div className="eff-row" key={idx}>
-                      <div className="eff-label">{eff.label}</div>
-                      <div className="eff-bar-wrap">
-                        <div className="eff-bar" style={{width: eff.val + '%', background: eff.color}}></div>
-                      </div>
-                      <div className="eff-val" style={{color: eff.color}}>{eff.val}%</div>
-                    </div>
-                  ))}
+                <div className="chart-wrap" style={{ height: '240px' }}>
+                  <canvas id="dailyVarietyChart"></canvas>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* ROW 3: Recent Completion Log */}
-          <div className="card" style={{marginBottom: '1rem'}}>
+          <div className="card" style={{ marginTop: '1rem' }}>
             <div className="card-header">
-              <div>
-                <div className="card-title">Recent Production Log</div>
-                <div className="card-subtitle">Last 10 completed batches from HMI</div>
-              </div>
-              <span className="badge badge-hypnos">Simulated Source</span>
+              <div className="card-title">Daily Production Table — Last 14 Days</div>
             </div>
-            <div className="card-body" style={{padding: 0}}>
+            <div className="card-body" style={{ padding: 0 }}>
               <table className="prod-table">
                 <thead>
                   <tr>
-                    <th>Time</th>
-                    <th>Product Type</th>
-                    <th>Variety</th>
-                    <th>Size</th>
-                    <th>Count</th>
-                    <th>Cycle (min)</th>
-                    <th>Line</th>
-                    <th>Status</th>
+                    <th>Date</th>
+                    <th>Spring</th>
+                    <th>Hypnos</th>
+                    <th>Total</th>
+                    <th>King</th>
+                    <th>Queen</th>
+                    <th>Double</th>
+                    <th>Single</th>
+                    <th>Efficiency</th>
+                    <th>Downtime</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {prodLog.length > 0 ? prodLog.map((row, idx) => (
+                  {dailyData.map((d, idx) => (
                     <tr key={idx}>
-                      <td>{row.time}</td>
-                      <td><span className={`badge ${getBadgeClass(row.type)}`}>{row.type}</span></td>
-                      <td>{row.variety}</td>
-                      <td>{row.size}</td>
-                      <td className="num">{row.count}</td>
-                      <td>{row.cycle.toFixed(1)}</td>
-                      <td>{row.line}</td>
-                      <td><span className={`status-pill ${getStatusClass(row.status)}`}>{row.status}</span></td>
+                      <td><strong>{d.date}</strong></td>
+                      <td className="num">{d.spring}</td>
+                      <td className="num">{d.hypnos}</td>
+                      <td className="num">{d.total}</td>
+                      <td className="num">{d.king}</td>
+                      <td className="num">{d.queen}</td>
+                      <td className="num">{d.double}</td>
+                      <td className="num">{d.single}</td>
+                      <td className="num">{d.efficiency}%</td>
+                      <td className="num">{d.downtime} min</td>
                     </tr>
-                  )) : <tr><td colSpan="8" style={{textAlign: 'center', color: 'var(--text-muted)'}}>No production records yet</td></tr>}
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1392,563 +946,444 @@ function App() {
         </div>
       )}
 
-      {/* OTHER TABS */}
-      {['hourly', 'daily', 'weekly', 'monthly', 'crm', 'settings'].map(tab => (
-        <div key={tab} className={`main ${activeTab === tab ? 'active' : ''}`} id={`tab-${tab}`}>
-          <div className="card">
-            <div className="card-body">
-              {tab === 'hourly' ? (
-                <div>
-                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Hourly Production — Detailed View
-                  </div>
-                  <div style={{padding: '1rem'}}>
-                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
-                      <div className="kpi-card spring-accent">
-                        <div className="kpi-label">This Hour Total</div>
-                        <div className="kpi-value" id="hourly-total">--</div>
-                        <div className="kpi-sub">units this hour</div>
-                      </div>
-                      <div className="kpi-card spring-accent">
-                        <div className="kpi-label">Spring — This Hour</div>
-                        <div className="kpi-value" id="hourly-spring">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card hypnos-accent">
-                        <div className="kpi-label">Hypnos — This Hour</div>
-                        <div className="kpi-value" id="hourly-hypnos">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card warn-accent">
-                        <div className="kpi-label">Hourly Target</div>
-                        <div className="kpi-value">120</div>
-                        <div className="kpi-sub">units/hour</div>
-                      </div>
-                      <div className="kpi-card success-accent">
-                        <div className="kpi-label">Best Hour Today</div>
-                        <div className="kpi-value" id="best-hour">--</div>
-                        <div className="kpi-sub">highest production</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Worst Hour Today</div>
-                        <div className="kpi-value" id="worst-hour">--</div>
-                        <div className="kpi-sub">lowest production</div>
-                      </div>
-                    </div>
-                    <div className="grid-2-1">
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Hourly Production Trend</div>
-                            <div className="card-subtitle">Today's hourly breakdown</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '250px'}}>
-                            <canvas id="hourlyTrendChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Hourly Size Mix</div>
-                            <div className="card-subtitle">Size distribution by hour</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '250px'}}>
-                            <canvas id="hourlySizeChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="card" style={{marginTop: '1rem'}}>
-                      <div className="card-header">
-                        <div>
-                          <div className="card-title">Hour-by-Hour Log</div>
-                          <div className="card-subtitle">Today's detailed hourly breakdown</div>
-                        </div>
-                      </div>
-                      <div className="card-body" style={{padding: 0}}>
-                        <table className="prod-table">
-                          <thead>
-                            <tr>
-                              <th>Hour</th>
-                              <th>Spring</th>
-                              <th>Hypnos</th>
-                              <th>Total</th>
-                              <th>King</th>
-                              <th>Queen</th>
-                              <th>Double</th>
-                              <th>Single</th>
-                              <th>vs Target</th>
-                            </tr>
-                          </thead>
-                          <tbody id="hourly-table-body">
-                            <tr><td colSpan="9" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading hourly data...</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : tab === 'daily' ? (
-                <div>
-                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Daily Production — Detailed View
-                  </div>
-                  <div style={{padding: '1rem'}}>
-                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
-                      <div className="kpi-card spring-accent">
-                        <div className="kpi-label">Today Total</div>
-                        <div className="kpi-value" id="daily-today">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Yesterday</div>
-                        <div className="kpi-value" id="daily-yesterday">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card success-accent">
-                        <div className="kpi-label">Daily Target</div>
-                        <div className="kpi-value">960</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Best Day (7d)</div>
-                        <div className="kpi-value" id="daily-best">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Avg Daily (7d)</div>
-                        <div className="kpi-value" id="daily-avg">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Downtime Today</div>
-                        <div className="kpi-value" id="daily-downtime">--</div>
-                        <div className="kpi-sub">minutes</div>
-                      </div>
-                    </div>
-                    <div className="grid-2-1">
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Daily Production — Last 14 Days</div>
-                            <div className="card-subtitle">Spring vs Hypnos</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '220px'}}>
-                            <canvas id="dailyChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Today by Variety</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '220px'}}>
-                            <canvas id="dailyVarietyChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="card" style={{marginTop: '1rem'}}>
-                      <div className="card-header">
-                        <div>
-                          <div className="card-title">Daily Production Table — Last 14 Days</div>
-                        </div>
-                      </div>
-                      <div className="card-body" style={{padding: 0}}>
-                        <table className="prod-table">
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th>Spring</th>
-                              <th>Hypnos</th>
-                              <th>Total</th>
-                              <th>King</th>
-                              <th>Queen</th>
-                              <th>Double</th>
-                              <th>Single</th>
-                              <th>Efficiency</th>
-                              <th>Downtime</th>
-                            </tr>
-                          </thead>
-                          <tbody id="daily-table-body">
-                            <tr><td colSpan="10" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading daily data...</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : tab === 'weekly' ? (
-                <div>
-                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Weekly Production — Detailed View
-                  </div>
-                  <div style={{padding: '1rem'}}>
-                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
-                      <div className="kpi-card spring-accent">
-                        <div className="kpi-label">This Week Total</div>
-                        <div className="kpi-value" id="weekly-this">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Last Week</div>
-                        <div className="kpi-value" id="weekly-last">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card success-accent">
-                        <div className="kpi-label">Weekly Target</div>
-                        <div className="kpi-value">4,800</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Spring (week)</div>
-                        <div className="kpi-value" id="weekly-spring">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card hypnos-accent">
-                        <div className="kpi-label">Hypnos (week)</div>
-                        <div className="kpi-value" id="weekly-hypnos">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Week Efficiency</div>
-                        <div className="kpi-value" id="weekly-eff">--%</div>
-                        <div className="kpi-sub">OEE avg</div>
-                      </div>
-                    </div>
-                    <div className="grid-1-1">
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Weekly Comparison — Last 8 Weeks</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '240px'}}>
-                            <canvas id="weeklyChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Day-of-Week Pattern</div>
-                            <div className="card-subtitle">Avg output per weekday</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '240px'}}>
-                            <canvas id="dowChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="card" style={{marginTop: '1rem'}}>
-                      <div className="card-header">
-                        <div>
-                          <div className="card-title">Weekly Summary Table</div>
-                        </div>
-                      </div>
-                      <div className="card-body" style={{padding: 0}}>
-                        <table className="prod-table">
-                          <thead>
-                            <tr>
-                              <th>Week</th>
-                              <th>Spring</th>
-                              <th>Hypnos</th>
-                              <th>Total</th>
-                              <th>Target</th>
-                              <th>Attainment</th>
-                              <th>Avg Efficiency</th>
-                            </tr>
-                          </thead>
-                          <tbody id="weekly-table-body">
-                            <tr><td colSpan="7" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading weekly data...</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : tab === 'monthly' ? (
-                <div>
-                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    Monthly Production — Detailed View
-                  </div>
-                  <div style={{padding: '1rem'}}>
-                    <div className="kpi-strip" style={{marginBottom: '1rem'}}>
-                      <div className="kpi-card spring-accent">
-                        <div className="kpi-label">This Month Total</div>
-                        <div className="kpi-value" id="monthly-this">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Last Month</div>
-                        <div className="kpi-value" id="monthly-last">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card success-accent">
-                        <div className="kpi-label">Monthly Target</div>
-                        <div className="kpi-value">20,000</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">Spring YTD</div>
-                        <div className="kpi-value" id="monthly-spring-ytd">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card hypnos-accent">
-                        <div className="kpi-label">Hypnos YTD</div>
-                        <div className="kpi-value" id="monthly-hypnos-ytd">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                      <div className="kpi-card">
-                        <div className="kpi-label">YTD Total</div>
-                        <div className="kpi-value" id="monthly-ytd">--</div>
-                        <div className="kpi-sub">units</div>
-                      </div>
-                    </div>
-                    <div className="grid-2-1">
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">Monthly Production — 12-Month View</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '230px'}}>
-                            <canvas id="monthlyChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="card">
-                        <div className="card-header">
-                          <div>
-                            <div className="card-title">YTD Size Mix</div>
-                          </div>
-                        </div>
-                        <div className="card-body">
-                          <div className="chart-wrap" style={{height: '230px'}}>
-                            <canvas id="monthlySizeChart"></canvas>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="card" style={{marginTop: '1rem'}}>
-                      <div className="card-header">
-                        <div>
-                          <div className="card-title">Monthly Summary</div>
-                        </div>
-                      </div>
-                      <div className="card-body" style={{padding: 0}}>
-                        <table className="prod-table">
-                          <thead>
-                            <tr>
-                              <th>Month</th>
-                              <th>Spring</th>
-                              <th>Hypnos</th>
-                              <th>Total</th>
-                              <th>Target</th>
-                              <th>Attainment</th>
-                              <th>King</th>
-                              <th>Queen</th>
-                              <th>Double</th>
-                              <th>Single</th>
-                            </tr>
-                          </thead>
-                          <tbody id="monthly-table-body">
-                            <tr><td colSpan="10" style={{textAlign: 'center', color: 'var(--text-muted)'}}>Loading monthly data...</td></tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ) : tab === 'settings' ? (
-                <div className="settings-panel">
-                  <div className="settings-section">
-                    <div className="settings-title">Data Source — HMI / PLC</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">PLC Endpoint URL</div>
-                        <div className="settings-row-desc">OPC-UA or Modbus TCP address of the HMI controller</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>HMI/PLC Simulator</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Authentication Method</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>Anonymous (Simulated)</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Polling Interval</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>{intervalMins} minutes</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Connection Status</div>
-                      </div>
-                      <span className="badge badge-success">Connected (Simulated)</span>
-                    </div>
-                  </div>
+      {/* 3. WEEKLY TAB: Replaced Day-of-Week with Order Fulfilment by Product */}
+      {!error && (
+        <div className={`main ${activeTab === 'weekly' ? 'active' : ''}`}>
+          <div className="kpi-strip six-cards">
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">This Week Total</div>
+              <div className="kpi-value">{weeklyData[0] ? weeklyData[0].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Last Week</div>
+              <div className="kpi-value">{weeklyData[1] ? weeklyData[1].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card success-accent">
+              <div className="kpi-label">Weekly Target</div>
+              <div className="kpi-value">{calculateTotalHourlyTarget() * 48}</div>
+              <div className="kpi-sub">units (6 days)</div>
+            </div>
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">Spring (This Week)</div>
+              <div className="kpi-value">{weeklyData[0] ? weeklyData[0].spring : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card hypnos-accent">
+              <div className="kpi-label">Hypnos (This Week)</div>
+              <div className="kpi-value">{weeklyData[0] ? weeklyData[0].hypnos : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card warn-accent">
+              <div className="kpi-label">Week Attainment</div>
+              <div className="kpi-value">{weeklyData[0] ? weeklyData[0].efficiency : 0}%</div>
+              <div className="kpi-sub">Target Attainment</div>
+            </div>
+          </div>
 
-                  <div className="settings-section">
-                    <div className="settings-title">Display Preferences</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">TV Display Mode</div>
-                        <div className="settings-row-desc">Full-screen kiosk optimised layout</div>
-                      </div>
-                      <div className="toggle-wrap" onClick={toggleTvMode}>
-                        <div className={`toggle ${tvMode ? 'on' : ''}`}></div>
-                      </div>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Auto-rotate Tabs</div>
-                        <div className="settings-row-desc">Cycle through dashboard, hourly, daily views automatically</div>
-                      </div>
-                      <div className="toggle-wrap" onClick={() => setAutoRotate(!autoRotate)}>
-                        <div className={`toggle ${autoRotate ? 'on' : ''}`}></div>
-                      </div>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Rotate Interval (seconds)</div>
-                      </div>
-                      <select 
-                        className="control-select" 
-                        style={{width: '130px'}}
-                        value={rotateInterval}
-                        onChange={(e) => setRotateInterval(parseInt(e.target.value))}
-                      >
-                        <option value="30">30s</option>
-                        <option value="60">60s</option>
-                        <option value="120">120s</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="settings-section">
-                    <div className="settings-title">Production Targets</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Hourly Target (Spring)</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>72 units</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Hourly Target (Hypnos)</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>48 units</span>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Shift Duration (hours)</div>
-                      </div>
-                      <span style={{fontSize: '0.8rem', color: 'var(--text-muted)'}}>8 hours</span>
-                    </div>
-                  </div>
-
-                  <div className="settings-section">
-                    <div className="settings-title">Simulator Controls</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Simulator Status</div>
-                        <div className="settings-row-desc">
-                          {simulatorStatus ? `${simulatorStatus.status} - ${simulatorStatus.eventsGenerated} events generated` : 'Loading...'}
-                        </div>
-                      </div>
-                      <span className={`badge ${simulatorStatus?.active ? 'badge-success' : 'badge-warn'}`}>
-                        {simulatorStatus?.active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="settings-section">
-                    <div className="settings-title">Alerts</div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Low Production Alert</div>
-                        <div className="settings-row-desc">Trigger when output falls below 80% of hourly target</div>
-                      </div>
-                      <div className="toggle-wrap">
-                        <div className="toggle on"></div>
-                      </div>
-                    </div>
-                    <div className="settings-row">
-                      <div>
-                        <div className="settings-row-label">Downtime Alert</div>
-                        <div className="settings-row-desc">Trigger when no units recorded for more than 20 minutes</div>
-                      </div>
-                      <div className="toggle-wrap">
-                        <div className="toggle on"></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button className="control-btn" style={{marginTop: '0.5rem'}}>Save Settings</button>
-                </div>
-              ) : tab === 'crm' ? (
+          <div className="grid-1-1">
+            <div className="card">
+              <div className="card-header">
                 <div>
-                  <div className="card-title" style={{textAlign: 'center', padding: '1rem'}}>
-                    CRM Metrics — Data Source Not Configured
-                  </div>
-                  <div style={{padding: '2rem', textAlign: 'center'}}>
-                    <div className="card" style={{maxWidth: '600px', margin: '0 auto'}}>
-                      <div className="card-body">
-                        <div style={{color: 'var(--text-muted)', marginBottom: '1rem'}}>
-                          <strong>CRM/Order/Quality Data Model Not Available</strong>
-                        </div>
-                        <div style={{color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: '1.6'}}>
-                          <p style={{marginBottom: '1rem'}}>
-                            The CRM Metrics module requires integration with order management, quality control, and delivery tracking systems.
-                          </p>
-                          <p style={{marginBottom: '1rem'}}>
-                            The following metrics would be available when configured:
-                          </p>
-                          <ul style={{textAlign: 'left', paddingLeft: '2rem', marginBottom: '1rem'}}>
-                            <li>On-Time Delivery Rate</li>
-                            <li>Quality Pass Rate</li>
-                            <li>Defect Rate Analysis</li>
-                            <li>Rework Units Tracking</li>
-                            <li>Order Fulfilment Status</li>
-                            <li>Production vs Demand Comparison</li>
-                          </ul>
-                          <p style={{color: 'var(--text-muted)', fontStyle: 'italic'}}>
-                            For the current hackathon implementation, please use the Dashboard, Hourly, Daily, Weekly, and Monthly production views for factory floor monitoring.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  <div className="card-title">Weekly Output — Last 8 Weeks</div>
+                  <div className="card-subtitle">Spring vs Hypnos production volume</div>
                 </div>
-              ) : (
-                <div className="card-title" style={{textAlign: 'center', padding: '2rem'}}>
-                  {tab.charAt(0).toUpperCase() + tab.slice(1)} Tab — Coming Soon
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: '250px' }}>
+                  <canvas id="weeklyChart"></canvas>
                 </div>
-              )}
+              </div>
+            </div>
+
+            {/* ORDER FULFILMENT BY PRODUCT (All 8 Product / Size combinations) */}
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Order Fulfilment by Product</div>
+                  <div className="card-subtitle">Target Planned vs Fulfilled (8 Mattress Lines)</div>
+                </div>
+                <span className="badge badge-success">Production Domain</span>
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: '250px' }}>
+                  <canvas id="fulfilmentChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: '1rem' }}>
+            <div className="card-header">
+              <div className="card-title">Weekly Summary Table</div>
+            </div>
+            <div className="card-body" style={{ padding: 0 }}>
+              <table className="prod-table">
+                <thead>
+                  <tr>
+                    <th>Week</th>
+                    <th>Spring</th>
+                    <th>Hypnos</th>
+                    <th>Total</th>
+                    <th>Target</th>
+                    <th>Attainment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {weeklyData.map((w, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{w.week}</strong></td>
+                      <td className="num">{w.spring}</td>
+                      <td className="num">{w.hypnos}</td>
+                      <td className="num">{w.total}</td>
+                      <td className="num">{w.target}</td>
+                      <td className="num">{w.efficiency}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
-      ))}
+      )}
 
+      {/* 4. MONTHLY TAB */}
+      {!error && (
+        <div className={`main ${activeTab === 'monthly' ? 'active' : ''}`}>
+          <div className="kpi-strip six-cards">
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">This Month Total</div>
+              <div className="kpi-value">{monthlyData[0] ? monthlyData[0].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">Last Month</div>
+              <div className="kpi-value">{monthlyData[1] ? monthlyData[1].total : '--'}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card success-accent">
+              <div className="kpi-label">Monthly Target</div>
+              <div className="kpi-value">{calculateTotalHourlyTarget() * 200}</div>
+              <div className="kpi-sub">units (25 days)</div>
+            </div>
+            <div className="kpi-card spring-accent">
+              <div className="kpi-label">Spring YTD</div>
+              <div className="kpi-value">{monthlyData.reduce((s, m) => s + (m.spring || 0), 0)}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card hypnos-accent">
+              <div className="kpi-label">Hypnos YTD</div>
+              <div className="kpi-value">{monthlyData.reduce((s, m) => s + (m.hypnos || 0), 0)}</div>
+              <div className="kpi-sub">units</div>
+            </div>
+            <div className="kpi-card">
+              <div className="kpi-label">YTD Total</div>
+              <div className="kpi-value">{monthlyData.reduce((s, m) => s + (m.total || 0), 0)}</div>
+              <div className="kpi-sub">units completed</div>
+            </div>
+          </div>
+
+          <div className="grid-2-1">
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">Monthly Production — 12-Month View</div>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: '240px' }}>
+                  <canvas id="monthlyChart"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <div>
+                  <div className="card-title">YTD Size Mix</div>
+                </div>
+              </div>
+              <div className="card-body">
+                <div className="chart-wrap" style={{ height: '240px' }}>
+                  <canvas id="monthlySizeChart"></canvas>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: '1rem' }}>
+            <div className="card-header">
+              <div className="card-title">Monthly Summary Table</div>
+            </div>
+            <div className="card-body" style={{ padding: 0 }}>
+              <table className="prod-table">
+                <thead>
+                  <tr>
+                    <th>Month</th>
+                    <th>Spring</th>
+                    <th>Hypnos</th>
+                    <th>Total</th>
+                    <th>Target</th>
+                    <th>King</th>
+                    <th>Queen</th>
+                    <th>Double</th>
+                    <th>Single</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyData.map((m, idx) => (
+                    <tr key={idx}>
+                      <td><strong>{m.month}</strong></td>
+                      <td className="num">{m.spring}</td>
+                      <td className="num">{m.hypnos}</td>
+                      <td className="num">{m.total}</td>
+                      <td className="num">{m.target}</td>
+                      <td className="num">{m.king}</td>
+                      <td className="num">{m.queen}</td>
+                      <td className="num">{m.double}</td>
+                      <td className="num">{m.single}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5. SETTINGS TAB */}
+      <div className={`main ${activeTab === 'settings' ? 'active' : ''}`}>
+        <div className="settings-panel">
+          {settingsSaveMessage && (
+            <div className={`alert-box ${settingsSaveMessage.type === 'success' ? 'alert-success' : 'alert-error'}`}>
+              {settingsSaveMessage.type === 'success' ? '✓ ' : '⚠️ '}{settingsSaveMessage.text}
+            </div>
+          )}
+
+          {/* 5.1 PREFERRED MODE */}
+          <div className="settings-section">
+            <div className="settings-title">Preferred Mode</div>
+            <div className="mode-selection-group">
+              <label className="mode-radio-label">
+                <input
+                  type="radio"
+                  name="preferredMode"
+                  value="SIMULATED"
+                  checked={settingsData.preferredMode === 'SIMULATED'}
+                  onChange={() => setSettingsData(p => ({ ...p, preferredMode: 'SIMULATED' }))}
+                />
+                Simulated Mode
+              </label>
+
+              <label className="mode-radio-label">
+                <input
+                  type="radio"
+                  name="preferredMode"
+                  value="DATA_SOURCE"
+                  checked={settingsData.preferredMode === 'DATA_SOURCE'}
+                  onChange={() => setSettingsData(p => ({ ...p, preferredMode: 'DATA_SOURCE' }))}
+                />
+                Data Source Mode
+              </label>
+            </div>
+
+            {/* DATA SOURCE FIELDS: Only shown in DATA_SOURCE mode */}
+            {settingsData.preferredMode === 'DATA_SOURCE' ? (
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row-label">Data Source / PLC URL</div>
+                    <div className="settings-row-desc">OPC-UA or Modbus TCP address of controller</div>
+                  </div>
+                  <input
+                    type="text"
+                    className="control-input"
+                    style={{ width: '260px' }}
+                    value={settingsData.dataSourceUrl || ''}
+                    onChange={(e) => setSettingsData(p => ({ ...p, dataSourceUrl: e.target.value }))}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row-label">Authentication Method</div>
+                  </div>
+                  <input
+                    type="text"
+                    className="control-input"
+                    style={{ width: '200px' }}
+                    value={settingsData.authenticationMethod || ''}
+                    onChange={(e) => setSettingsData(p => ({ ...p, authenticationMethod: e.target.value }))}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row-label">Data Source Polling Interval (seconds)</div>
+                    <div className="settings-row-desc">Hardware acquisition frequency</div>
+                  </div>
+                  <input
+                    type="number"
+                    className="control-input"
+                    style={{ width: '100px' }}
+                    value={settingsData.dataSourcePollingInterval || 5}
+                    onChange={(e) => setSettingsData(p => ({ ...p, dataSourcePollingInterval: parseInt(e.target.value, 10) }))}
+                  />
+                </div>
+
+                <div className="settings-row">
+                  <div>
+                    <div className="settings-row-label">Connection Status</div>
+                  </div>
+                  <span className="badge badge-success">Ready (Interface Bound)</span>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                Simulated mode active: Internal simulation generates gradual production events. External PLC connection fields are disabled.
+              </div>
+            )}
+          </div>
+
+          {/* 5.2 PRODUCTION TARGETS: 8 PRODUCT TARGETS */}
+          <div className="settings-section">
+            <div className="settings-title">Production Targets (Hourly Target per Product & Size)</div>
+            <div className="targets-grid">
+              {/* SPRING TARGETS */}
+              <div>
+                <div className="target-col-title">Spring Mattress Line</div>
+                {['SINGLE', 'DOUBLE', 'QUEEN', 'KING'].map(sz => (
+                  <div className="target-input-row" key={`SPRING_${sz}`}>
+                    <span className="target-input-label">Spring {sz.charAt(0) + sz.slice(1).toLowerCase()}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      className="target-input-field"
+                      value={settingsData.productionTargets?.[`SPRING_${sz}`] ?? 0}
+                      onChange={(e) => handleTargetChange(`SPRING_${sz}`, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* HYPNOS TARGETS */}
+              <div>
+                <div className="target-col-title">Hypnos Mattress Line</div>
+                {['SINGLE', 'DOUBLE', 'QUEEN', 'KING'].map(sz => (
+                  <div className="target-input-row" key={`HYPNOS_${sz}`}>
+                    <span className="target-input-label">Hypnos {sz.charAt(0) + sz.slice(1).toLowerCase()}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      className="target-input-field"
+                      value={settingsData.productionTargets?.[`HYPNOS_${sz}`] ?? 0}
+                      onChange={(e) => handleTargetChange(`HYPNOS_${sz}`, e.target.value)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="target-summary-box">
+              <span>Spring: <strong>{calculateSpringHourlyTarget()}/hr</strong></span>
+              <span>Hypnos: <strong>{calculateHypnosHourlyTarget()}/hr</strong></span>
+              <span style={{ color: 'var(--accent-hypnos)' }}>Total Hourly Target: <strong>{calculateTotalHourlyTarget()} units/hr</strong></span>
+            </div>
+          </div>
+
+          {/* 5.3 SHIFT CONFIGURATION */}
+          <div className="settings-section">
+            <div className="settings-title">Shift Configuration</div>
+            <table className="shift-config-table">
+              <thead>
+                <tr>
+                  <th>Shift Name</th>
+                  <th>Start Time</th>
+                  <th>End Time</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(settingsData.shiftConfigurations || []).map((shift, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <input
+                        type="text"
+                        className="control-input"
+                        value={shift.shiftName}
+                        onChange={(e) => handleShiftChange(idx, 'shiftName', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="time"
+                        className="control-input"
+                        value={shift.startTime}
+                        onChange={(e) => handleShiftChange(idx, 'startTime', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="time"
+                        className="control-input"
+                        value={shift.endTime}
+                        onChange={(e) => handleShiftChange(idx, 'endTime', e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <span className="badge badge-success">Active</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* 5.4 DASHBOARD PREFERENCES */}
+          <div className="settings-section">
+            <div className="settings-title">Dashboard Preferences</div>
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">Dashboard Auto-Update Interval</div>
+                <div className="settings-row-desc">Frequency of React frontend data refresh</div>
+              </div>
+              <select
+                className="control-select"
+                style={{ width: '150px' }}
+                value={intervalMins}
+                onChange={handleIntervalChange}
+              >
+                <option value={15}>Every 15 min</option>
+                <option value={30}>Every 30 min</option>
+                <option value={60}>Every 60 min</option>
+                <option value={5}>Every 5 min (demo)</option>
+              </select>
+            </div>
+
+            <div className="settings-row">
+              <div>
+                <div className="settings-row-label">TV Display Mode</div>
+                <div className="settings-row-desc">Full-screen kiosk mode for floor displays</div>
+              </div>
+              <div className="toggle-wrap" onClick={() => setTvMode(!tvMode)}>
+                <div className={`toggle ${tvMode ? 'on' : ''}`}></div>
+              </div>
+            </div>
+          </div>
+
+          {/* SAVE BUTTON */}
+          <div className="save-settings-bar">
+            <button className="control-btn" onClick={handleSaveSettings} disabled={isLoading} style={{ padding: '0.5rem 2rem', fontSize: '0.9rem' }}>
+              {isLoading ? 'Saving...' : 'Save Settings'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* FOOTER */}
       <footer className="footer" style={{ display: tvMode ? 'none' : 'block' }}>
-        Peps Mattress Automated Production Display System &nbsp;&middot;&nbsp; HMI/PLC Integration Layer &nbsp;&middot;&nbsp; Data refreshes per configured interval
+        Peps Mattress Automated Production Display System &nbsp;&middot;&nbsp; Production Data Acquisition Layer &nbsp;&middot;&nbsp; Spring Boot & MySQL Backend
       </footer>
     </div>
   );

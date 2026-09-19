@@ -1,6 +1,7 @@
 package com.peps.production.model;
 
 import jakarta.persistence.*;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -24,7 +25,7 @@ public class ProductionData {
     private MattressSize size;
     @Column(length = 50)
     private String productionLine;
-    @Column(nullable = false)
+    @Column
     private LocalDateTime startTime;
     @Column(nullable = false)
     private LocalDateTime completionTime;
@@ -36,12 +37,42 @@ public class ProductionData {
     private ProductionStatus status;
     @Column(length = 20)
     private String dataSource; // "SIMULATOR" or "REAL" to identify simulated historical data
-    @Column(nullable = false)
+    @Column
     private LocalDate productionDate;
     @Column(length = 50)
     private String shift;
     @Column(length = 50)
     private String sourceMode; // "SIMULATED" or "DATA_SOURCE"
+
+    @PrePersist
+    @PreUpdate
+    public void ensureDefaults() {
+        if (this.productionDate == null) {
+            if (this.completionTime != null) {
+                this.productionDate = this.completionTime.toLocalDate();
+            } else if (this.productionTime != null) {
+                this.productionDate = this.productionTime.toLocalDate();
+            } else {
+                this.productionDate = LocalDate.now();
+            }
+        }
+        if (this.startTime == null) {
+            if (this.completionTime != null) {
+                this.startTime = this.completionTime;
+            } else if (this.productionTime != null) {
+                this.startTime = this.productionTime;
+            } else {
+                this.startTime = LocalDateTime.now();
+            }
+        }
+        if (this.productionTime == null) {
+            if (this.completionTime != null) {
+                this.productionTime = this.completionTime;
+            } else {
+                this.productionTime = LocalDateTime.now();
+            }
+        }
+    }
 
     public ProductionData() { }
     
@@ -51,6 +82,7 @@ public class ProductionData {
         this.size = size;
         this.completionTime = completionTime; 
         this.startTime = completionTime;
+        this.productionTime = completionTime;
         this.status = ProductionStatus.COMPLETED;
         this.dataSource = "SIMULATOR";
         this.productionDate = completionTime.toLocalDate();

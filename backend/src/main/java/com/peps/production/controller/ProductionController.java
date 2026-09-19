@@ -1,383 +1,282 @@
 package com.peps.production.controller;
 
 import com.peps.production.dto.*;
-import com.peps.production.model.ProductionData;
-import com.peps.production.model.ProductionStatus;
-import com.peps.production.repository.ProductionRepository;
+import com.peps.production.model.*;
+import com.peps.production.repository.*;
+import com.peps.production.service.AlertService;
 import com.peps.production.service.DashboardService;
-import com.peps.production.service.ProductionSimulatorService;
-import com.peps.production.service.ProductionTimeService;
-import com.peps.production.service.ProductionSimulationService;
-import com.peps.production.service.SimulationClockService;
-import com.peps.production.service.HistoricalSeedingService;
-import org.springframework.beans.factory.annotation.Value;
+import com.peps.production.service.DowntimeSimulationService;
+import com.peps.production.service.SettingsService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/production")
+@RequestMapping("/api")
 public class ProductionController {
     private final ProductionRepository repository;
     private final DashboardService dashboardService;
-    private final ProductionSimulatorService simulatorService;
-    private final ProductionTimeService timeService;
-    private final ProductionSimulationService simulationService;
-    private final SimulationClockService simulationClockService;
-    private final HistoricalSeedingService historicalSeedingService;
-    
-    @Value("${production.daily-target:500}")
-    private int dailyTarget;
-    
-    @Value("${production.weekly-target:2500}")
-    private int weeklyTarget;
-    
-    @Value("${production.monthly-target:10000}")
-    private int monthlyTarget;
-    
-    public ProductionController(ProductionRepository repository, 
-                               DashboardService dashboardService,
-                               ProductionSimulatorService simulatorService,
-                               ProductionTimeService timeService,
-                               ProductionSimulationService simulationService,
-                               SimulationClockService simulationClockService,
-                               HistoricalSeedingService historicalSeedingService) {
+    private final SettingsService settingsService;
+    private final AlertService alertService;
+    private final DowntimeSimulationService downtimeService;
+    private final DowntimeEventRepository downtimeRepository;
+    private final ProductionTargetRepository targetRepository;
+
+    public ProductionController(ProductionRepository repository,
+                                DashboardService dashboardService,
+                                SettingsService settingsService,
+                                AlertService alertService,
+                                DowntimeSimulationService downtimeService,
+                                DowntimeEventRepository downtimeRepository,
+                                ProductionTargetRepository targetRepository) {
         this.repository = repository;
         this.dashboardService = dashboardService;
-        this.simulatorService = simulatorService;
-        this.timeService = timeService;
-        this.simulationService = simulationService;
-        this.simulationClockService = simulationClockService;
-        this.historicalSeedingService = historicalSeedingService;
+        this.settingsService = settingsService;
+        this.alertService = alertService;
+        this.downtimeService = downtimeService;
+        this.downtimeRepository = downtimeRepository;
+        this.targetRepository = targetRepository;
     }
-    
-    @GetMapping("/hourly")
-    public ResponseEntity<HourlyProduction> getHourlyProduction() {
-        // Synchronize production before returning data
-        simulationService.synchronizeProduction();
-        
-        LocalDateTime dayStart = timeService.getCurrentDate().atStartOfDay();
-        LocalDateTime now = timeService.getCurrentTime();
-        
-        // Only query up to current time, not future
-        List<ProductionData> today = repository.findByStatusAndCompletionTimeBetween(
-            ProductionStatus.COMPLETED, dayStart, now);
-        
-        HourlyProduction hourly = new HourlyProduction();
-        int currentHour = now.getHour();
-        
-        for (ProductionData item : today) {
-            int hourIndex = item.getCompletionTime().getHour();
-            // Only include hours that have already passed
-            if (hourIndex <= currentHour && hourIndex >= 0 && hourIndex < 24) {
-                boolean isSpring = item.getProductType().name().equals("SPRING");
-                // One event = one mattress, so we increment by 1
-                if (isSpring) {
-                    hourly.getSpring()[hourIndex]++;
-                } else {
-                    hourly.getHypnos()[hourIndex]++;
-                }
-            }
-        }
-        
-        // Future hours remain zero (default)
-        return ResponseEntity.ok(hourly);
+
+    @GetMapping({"/dashboard", "/production/dashboard"})
+    public ResponseEntity<DashboardResponse> getDashboard() {
+        return ResponseEntity.ok(dashboardService.getDashboard());
     }
-    
-    @GetMapping("/daily")
+
+    @GetMapping({"/daily", "/production/daily"})
     public ResponseEntity<List<DailyProduction>> getDailyProduction() {
-        // READ-ONLY: No synchronization needed for historical data
         List<DailyProduction> dailyData = new ArrayList<>();
-        LocalDate today = timeService.getCurrentDate();
-        
-        for (int i = 13; i >= 0; i--) {
+        LocalDate today = LocalDate.now();
+        int hourlyTarget = settingsService.calculateTotalHourlyTarget();
+        int dailyTarget = hourlyTarget > 0 ? hourlyTarget * 8 : 656; // 8-hour target baseline
+
+        for (int i = 0; i < 14; i++) {
             LocalDate date = today.minusDays(i);
-            LocalDateTime dayStart = date.atStartOfDay();
-            LocalDateTime dayEnd = date.atTime(23, 59, 59);
-            
-            List<ProductionData> dayData = repository.findByStatusAndCompletionTimeBetween(
-                ProductionStatus.COMPLETED, dayStart, dayEnd);
-            
-            DailyProduction daily = new DailyProduction();
-            daily.setDate(date.format(DateTimeFormatter.ofPattern("MMM d")));
-            
+            LocalDateTime start = date.atStartOfDay();
+            LocalDateTime end = (i == 0) ? LocalDateTime.now() : date.atTime(23, 59, 59);
+
+            List<ProductionData> dayEvents = repository.findByStatusAndCompletionTimeBetween(
+                    ProductionStatus.COMPLETED, start, end);
+
+            DailyProduction dp = new DailyProduction();
+            dp.setDate(date.format(DateTimeFormatter.ofPattern("MMM d")));
+
             int spring = 0, hypnos = 0;
             int king = 0, queen = 0, doubleSize = 0, single = 0;
-            
-            for (ProductionData item : dayData) {
-                // One event = one mattress, so we count events, not quantity
-                if (item.getProductType().name().equals("SPRING")) {
+
+            for (ProductionData event : dayEvents) {
+                if (event.getProductType() == ProductType.SPRING) {
                     spring++;
                 } else {
                     hypnos++;
                 }
-                
-                switch (item.getSize().name()) {
-                    case "KING": king++; break;
-                    case "QUEEN": queen++; break;
-                    case "DOUBLE": doubleSize++; break;
-                    case "SINGLE": single++; break;
+
+                if (event.getSize() != null) {
+                    switch (event.getSize()) {
+                        case KING -> king++;
+                        case QUEEN -> queen++;
+                        case DOUBLE -> doubleSize++;
+                        case SINGLE -> single++;
+                    }
                 }
             }
-            
-            daily.setSpring(spring);
-            daily.setHypnos(hypnos);
-            daily.setTotal(spring + hypnos);
-            daily.setKing(king);
-            daily.setQueen(queen);
-            daily.setDouble(doubleSize);
-            daily.setSingle(single);
-            
-            // Use centralized daily target for efficiency calculation
-            daily.setEfficiency(calculateEfficiency(spring + hypnos, dailyTarget));
-            daily.setDowntime(calculateDowntime(dayData));
-            
-            dailyData.add(daily);
+
+            int total = spring + hypnos;
+            dp.setSpring(spring);
+            dp.setHypnos(hypnos);
+            dp.setTotal(total);
+            dp.setKing(king);
+            dp.setQueen(queen);
+            dp.setDouble(doubleSize);
+            dp.setSingle(single);
+
+            int efficiency = (dailyTarget > 0 && total > 0) ? 
+                    (int) Math.min(100, Math.round(((double) total / dailyTarget) * 100.0)) : 0;
+            dp.setEfficiency(efficiency);
+
+            Long downtimeMins = downtimeRepository.sumDurationMinutesBetween(start, end);
+            dp.setDowntime(downtimeMins != null ? downtimeMins.intValue() : 0);
+
+            dailyData.add(dp);
         }
-        
+
         return ResponseEntity.ok(dailyData);
     }
-    
-    @GetMapping("/weekly")
-    public ResponseEntity<List<WeeklyProduction>> getWeeklyProduction() {
-        // READ-ONLY: No synchronization needed for historical data
-        List<WeeklyProduction> weeklyData = new ArrayList<>();
-        LocalDate today = timeService.getCurrentDate();
-        
-        for (int i = 7; i >= 0; i--) {
-            LocalDate weekStart = today.minusWeeks(i).with(java.time.DayOfWeek.MONDAY);
-            LocalDate weekEnd = weekStart.plusDays(6);
-            
+
+    @GetMapping({"/weekly", "/production/weekly"})
+    public ResponseEntity<WeeklyResponse> getWeeklyProduction() {
+        List<WeeklyProduction> weeklySummary = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        int hourlyTarget = settingsService.calculateTotalHourlyTarget();
+        int weeklyTarget = (hourlyTarget > 0 ? hourlyTarget * 8 * 6 : 3936); // 6 working days * 8h
+
+        // 8 weeks history
+        for (int i = 0; i < 8; i++) {
+            LocalDate weekEnd = today.minusWeeks(i);
+            LocalDate weekStart = weekEnd.minusDays(6);
+
             LocalDateTime start = weekStart.atStartOfDay();
-            LocalDateTime end = weekEnd.atTime(23, 59, 59);
-            
-            List<ProductionData> weekData = repository.findByStatusAndCompletionTimeBetween(
-                ProductionStatus.COMPLETED, start, end);
-            
-            WeeklyProduction weekly = new WeeklyProduction();
-            weekly.setWeek("W" + (8 - i));
-            
+            LocalDateTime end = (i == 0) ? LocalDateTime.now() : weekEnd.atTime(23, 59, 59);
+
+            List<ProductionData> weekEvents = repository.findByStatusAndCompletionTimeBetween(
+                    ProductionStatus.COMPLETED, start, end);
+
+            WeeklyProduction wp = new WeeklyProduction();
+            wp.setWeek("W" + (8 - i));
+
             int spring = 0, hypnos = 0;
-            for (ProductionData item : weekData) {
-                // One event = one mattress, so we count events, not quantity
-                if (item.getProductType().name().equals("SPRING")) {
+            for (ProductionData event : weekEvents) {
+                if (event.getProductType() == ProductType.SPRING) {
                     spring++;
                 } else {
                     hypnos++;
                 }
             }
-            
-            weekly.setSpring(spring);
-            weekly.setHypnos(hypnos);
-            weekly.setTotal(spring + hypnos);
-            weekly.setTarget(weeklyTarget); // Use centralized weekly target
-            weekly.setEfficiency(calculateEfficiency(spring + hypnos, weeklyTarget));
-            
-            weeklyData.add(weekly);
+
+            int total = spring + hypnos;
+            wp.setSpring(spring);
+            wp.setHypnos(hypnos);
+            wp.setTotal(total);
+            wp.setTarget(weeklyTarget);
+            wp.setEfficiency(weeklyTarget > 0 ? (int) Math.min(100, Math.round(((double) total / weeklyTarget) * 100.0)) : 0);
+
+            weeklySummary.add(wp);
         }
-        
-        return ResponseEntity.ok(weeklyData);
+
+        // Calculate "Order Fulfilment by Product" for current week
+        LocalDate thisWeekStart = today.with(DayOfWeek.MONDAY);
+        LocalDateTime currentWeekStart = thisWeekStart.atStartOfDay();
+        LocalDateTime currentWeekEnd = LocalDateTime.now();
+
+        List<ProductionData> currentWeekEvents = repository.findByStatusAndCompletionTimeBetween(
+                ProductionStatus.COMPLETED, currentWeekStart, currentWeekEnd);
+
+        List<ProductFulfilmentDto> fulfilmentList = new ArrayList<>();
+        for (ProductType pType : ProductType.values()) {
+            for (MattressSize size : MattressSize.values()) {
+                String label = (pType == ProductType.SPRING ? "Spring " : "Hypnos ") +
+                        size.name().charAt(0) + size.name().substring(1).toLowerCase();
+
+                int hourlyProductTarget = targetRepository.findByProductTypeAndSize(pType, size)
+                        .map(ProductionTarget::getHourlyTarget).orElse(10);
+                
+                // Weekly planned = hourly target * 48 hours (6 days * 8h)
+                int planned = hourlyProductTarget * 48;
+
+                // Actual produced this week for this product & size
+                long actualCount = currentWeekEvents.stream()
+                        .filter(e -> e.getProductType() == pType && e.getSize() == size)
+                        .count();
+
+                fulfilmentList.add(new ProductFulfilmentDto(label, planned, (int) actualCount));
+            }
+        }
+
+        return ResponseEntity.ok(new WeeklyResponse(weeklySummary, fulfilmentList));
     }
-    
-    @GetMapping("/monthly")
+
+    @GetMapping({"/monthly", "/production/monthly"})
     public ResponseEntity<List<MonthlyProduction>> getMonthlyProduction() {
-        // READ-ONLY: No synchronization needed for historical data
         List<MonthlyProduction> monthlyData = new ArrayList<>();
-        LocalDate today = timeService.getCurrentDate();
-        
-        for (int i = 11; i >= 0; i--) {
+        LocalDate today = LocalDate.now();
+        int hourlyTarget = settingsService.calculateTotalHourlyTarget();
+        int monthlyTarget = (hourlyTarget > 0 ? hourlyTarget * 8 * 25 : 16400); // 25 working days * 8h
+
+        for (int i = 0; i < 12; i++) {
             LocalDate monthStart = today.minusMonths(i).withDayOfMonth(1);
             LocalDate monthEnd = monthStart.plusMonths(1).minusDays(1);
-            
+
             LocalDateTime start = monthStart.atStartOfDay();
-            LocalDateTime end = monthEnd.atTime(23, 59, 59);
-            
-            List<ProductionData> monthData = repository.findByStatusAndCompletionTimeBetween(
-                ProductionStatus.COMPLETED, start, end);
-            
-            MonthlyProduction monthly = new MonthlyProduction();
-            monthly.setMonth(monthStart.format(DateTimeFormatter.ofPattern("MMM")));
-            
+            LocalDateTime end = (i == 0) ? LocalDateTime.now() : monthEnd.atTime(23, 59, 59);
+
+            List<ProductionData> monthEvents = repository.findByStatusAndCompletionTimeBetween(
+                    ProductionStatus.COMPLETED, start, end);
+
+            MonthlyProduction mp = new MonthlyProduction();
+            mp.setMonth(monthStart.format(DateTimeFormatter.ofPattern("MMM yyyy")));
+
             int spring = 0, hypnos = 0;
             int king = 0, queen = 0, doubleSize = 0, single = 0;
-            
-            for (ProductionData item : monthData) {
-                // One event = one mattress, so we count events, not quantity
-                if (item.getProductType().name().equals("SPRING")) {
+
+            for (ProductionData event : monthEvents) {
+                if (event.getProductType() == ProductType.SPRING) {
                     spring++;
                 } else {
                     hypnos++;
                 }
-                
-                switch (item.getSize().name()) {
-                    case "KING": king++; break;
-                    case "QUEEN": queen++; break;
-                    case "DOUBLE": doubleSize++; break;
-                    case "SINGLE": single++; break;
+
+                if (event.getSize() != null) {
+                    switch (event.getSize()) {
+                        case KING -> king++;
+                        case QUEEN -> queen++;
+                        case DOUBLE -> doubleSize++;
+                        case SINGLE -> single++;
+                    }
                 }
             }
-            
-            monthly.setSpring(spring);
-            monthly.setHypnos(hypnos);
-            monthly.setTotal(spring + hypnos);
-            monthly.setTarget(monthlyTarget); // Use centralized monthly target
-            monthly.setKing(king);
-            monthly.setQueen(queen);
-            monthly.setDouble(doubleSize);
-            monthly.setSingle(single);
-            
-            monthlyData.add(monthly);
+
+            int total = spring + hypnos;
+            mp.setSpring(spring);
+            mp.setHypnos(hypnos);
+            mp.setTotal(total);
+            mp.setTarget(monthlyTarget);
+            mp.setKing(king);
+            mp.setQueen(queen);
+            mp.setDouble(doubleSize);
+            mp.setSingle(single);
+
+            monthlyData.add(mp);
         }
-        
+
         return ResponseEntity.ok(monthlyData);
     }
-    
-    @GetMapping("/recent")
+
+    @GetMapping({"/recent", "/production/recent"})
     public ResponseEntity<List<RecentProduction>> getRecentProduction(
-            @RequestParam(defaultValue = "10") int limit) {
-        // READ-ONLY: No synchronization needed, just query existing data
+            @RequestParam(defaultValue = "15") int limit) {
         List<ProductionData> recent = repository.findTop10ByStatusOrderByCompletionTimeDesc(ProductionStatus.COMPLETED);
         return ResponseEntity.ok(recent.stream()
-            .limit(limit)
-            .map(item -> new RecentProduction(
-                item.getProductType().name(),
-                item.getVariety() != null ? item.getVariety() : "Standard",
-                item.getSize().name(),
-                item.getCompletionTime(),
-                item.getProductionLine() != null ? item.getProductionLine() : "Line 1",
-                item.getStatus().name(),
-                item.getShift() != null ? item.getShift() : "Unknown"
-            ))
-            .toList());
+                .limit(limit)
+                .map(item -> new RecentProduction(
+                        item.getProductType().name(),
+                        item.getVariety() != null ? item.getVariety() : "Standard",
+                        item.getSize().name(),
+                        item.getCompletionTime(),
+                        item.getProductionLine() != null ? item.getProductionLine() : "Line 1",
+                        item.getStatus().name(),
+                        item.getShift() != null ? item.getShift() : "Current Shift"
+                ))
+                .toList());
     }
-    
+
+    @GetMapping("/alerts")
+    public ResponseEntity<List<ProductionAlert>> getAlerts() {
+        return ResponseEntity.ok(alertService.getActiveAlerts());
+    }
+
+    @GetMapping("/downtime")
+    public ResponseEntity<Map<String, Object>> getDowntime() {
+        Map<String, Object> dt = new HashMap<>();
+        dt.put("todayDowntimeMinutes", downtimeService.getTodayDowntime());
+        dt.put("inDowntime", downtimeService.isCurrentlyInDowntime());
+        return ResponseEntity.ok(dt);
+    }
+
     @GetMapping("/status")
     public ResponseEntity<ProductionStatusResponse> getProductionStatus() {
-        // READ-ONLY: Just return current system status
         ProductionStatusResponse status = new ProductionStatusResponse();
         status.setConnectionStatus("Connected");
-        status.setDataSource("Simulated HMI/PLC");
-        status.setLastUpdateTime(timeService.getCurrentTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        status.setDataSource("Simulated Data Acquisition");
+        status.setLastUpdateTime(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         status.setSimulatorActive(true);
         status.setTotalRecords((int) repository.count());
-        
-        // Add current production info
-        int currentProduction = simulationService.getCurrentProductionCount();
-        int expectedProduction = timeService.calculateExpectedProduction(timeService.getCurrentTime());
-        status.setCurrentProduction(currentProduction);
-        status.setExpectedProduction(expectedProduction);
-        
         return ResponseEntity.ok(status);
-    }
-    
-    @GetMapping("/simulation/status")
-    public ResponseEntity<Map<String, Object>> getSimulationStatus() {
-        Map<String, Object> status = new HashMap<>();
-        status.put("enabled", simulationClockService.isSimulationEnabled());
-        status.put("timeMultiplier", simulationClockService.getTimeMultiplier());
-        status.put("currentTime", timeService.getCurrentTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        status.put("currentDate", timeService.getCurrentDate().toString());
-        status.put("realTime", simulationClockService.getRealTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-        status.put("historyDays", historicalSeedingService.getHistoryDays());
-        status.put("totalRecords", repository.count());
-        
-        return ResponseEntity.ok(status);
-    }
-    
-    @GetMapping("/history")
-    public ResponseEntity<List<ProductionData>> getProductionHistory(
-            @RequestParam(required = false) String line,
-            @RequestParam(required = false) String shift,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        
-        // READ-ONLY: No synchronization needed for historical queries
-        LocalDateTime start = startDate != null ? startDate.atStartOfDay() : timeService.getCurrentDate().atStartOfDay();
-        LocalDateTime end = endDate != null ? endDate.atTime(23, 59, 59) : timeService.getCurrentTime();
-        
-        List<ProductionData> data = repository.findByStatusAndCompletionTimeBetween(
-            ProductionStatus.COMPLETED, start, end);
-        
-        // Apply filters if provided
-        if (line != null && !line.equals("all")) {
-            data = data.stream()
-                .filter(item -> line.equals(item.getProductionLine()))
-                .collect(Collectors.toList());
-        }
-        
-        if (shift != null && !shift.equals("all")) {
-            data = filterByShift(data, shift);
-        }
-        
-        return ResponseEntity.ok(data);
-    }
-    
-    private List<ProductionData> filterByShift(List<ProductionData> data, String shift) {
-        // Use production window from timeService for "current" shift
-        if (shift == null || shift.equals("current")) {
-            int startHour = timeService.getStartTime().getHour();
-            int endHour = timeService.getEndTime().getHour();
-            
-            return data.stream()
-                .filter(item -> {
-                    int hour = item.getCompletionTime().getHour();
-                    return hour >= startHour && hour < endHour;
-                })
-                .collect(Collectors.toList());
-        }
-        
-        // For specific shifts, maintain compatibility with existing shift logic
-        int shiftStartHour, shiftEndHour;
-        switch (shift) {
-            case "A": shiftStartHour = 6; shiftEndHour = 14; break;
-            case "B": shiftStartHour = 14; shiftEndHour = 22; break;
-            case "C": shiftStartHour = 22; shiftEndHour = 6; break;
-            default: return data;
-        }
-        
-        return data.stream()
-            .filter(item -> {
-                int hour = item.getCompletionTime().getHour();
-                if (shift.equals("C")) {
-                    return hour >= 22 || hour < 6;
-                }
-                return hour >= shiftStartHour && hour < shiftEndHour;
-            })
-            .collect(Collectors.toList());
-    }
-    
-    private int calculateEfficiency(int actual, int target) {
-        if (target == 0) return 0;
-        return (int) Math.min(100, Math.round((actual * 100.0) / target));
-    }
-    
-    private int calculateDowntime(List<ProductionData> dayData) {
-        // Improved downtime calculation based on production window
-        if (dayData.isEmpty()) return 0;
-        
-        // Use actual production window duration
-        long totalMinutes = timeService.getTotalProductionMinutes();
-        
-        // Calculate actual production time from cycle times
-        long productionMinutes = dayData.stream()
-            .filter(item -> item.getCycleTime() != null)
-            .mapToLong(item -> (long) item.getCycleTime().doubleValue())
-            .sum();
-        
-        // If no cycle times, estimate based on quantity
-        if (productionMinutes == 0) {
-            productionMinutes = dayData.stream()
-                .mapToInt(ProductionData::getQuantity)
-                .sum() * 5; // 5 minutes per unit as fallback
-        }
-        
-        return Math.max(0, (int) (totalMinutes - productionMinutes));
     }
 }

@@ -1,8 +1,11 @@
 package com.peps.production.dto;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.util.List;
 import java.util.Map;
 
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Settings {
     // Mode selection
     private String preferredMode; // "SIMULATED" or "DATA_SOURCE"
@@ -17,6 +20,7 @@ public class Settings {
     private String connectionStatus;
     
     // Production targets (8 combinations)
+    @JsonAlias({"productTargets", "targets"})
     private Map<String, Integer> productionTargets; // Key: "SPRING_SINGLE", "HYPNOS_KING", etc.
     
     // Shift configurations
