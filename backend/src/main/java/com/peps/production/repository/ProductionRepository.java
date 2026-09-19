@@ -10,23 +10,33 @@ import java.util.List;
 public interface ProductionRepository extends JpaRepository<ProductionData, Long> {
     List<ProductionData> findByStatusAndCompletionTimeBetween(ProductionStatus status, LocalDateTime start, LocalDateTime end);
     List<ProductionData> findTop10ByStatusOrderByCompletionTimeDesc(ProductionStatus status);
+    List<ProductionData> findByProductionDateAndStatus(LocalDate date, ProductionStatus status);
+    List<ProductionData> findByShiftAndStatus(String shift, ProductionStatus status);
     
     /**
-     * Count total production quantity for a specific time period
+     * Count production events (one event = one mattress) for a specific time period
      */
-    @Query("SELECT COALESCE(SUM(p.quantity), 0) FROM ProductionData p WHERE p.status = :status AND p.completionTime BETWEEN :start AND :end")
-    int sumQuantityByStatusAndCompletionTimeBetween(@Param("status") ProductionStatus status, 
-                                                     @Param("start") LocalDateTime start, 
-                                                     @Param("end") LocalDateTime end);
+    @Query("SELECT COUNT(p) FROM ProductionData p WHERE p.status = :status AND p.completionTime BETWEEN :start AND :end")
+    long countByStatusAndCompletionTimeBetween(@Param("status") ProductionStatus status, 
+                                                @Param("start") LocalDateTime start, 
+                                                @Param("end") LocalDateTime end);
     
     /**
-     * Count total production quantity for a specific product type and time period
+     * Count production events for a specific product type and time period
      */
-    @Query("SELECT COALESCE(SUM(p.quantity), 0) FROM ProductionData p WHERE p.status = :status AND p.productType = :productType AND p.completionTime BETWEEN :start AND :end")
-    int sumQuantityByStatusAndProductTypeAndCompletionTimeBetween(@Param("status") ProductionStatus status,
-                                                                    @Param("productType") ProductType productType,
-                                                                    @Param("start") LocalDateTime start,
-                                                                    @Param("end") LocalDateTime end);
+    @Query("SELECT COUNT(p) FROM ProductionData p WHERE p.status = :status AND p.productType = :productType AND p.completionTime BETWEEN :start AND :end")
+    long countByStatusAndProductTypeAndCompletionTimeBetween(@Param("status") ProductionStatus status,
+                                                               @Param("productType") ProductType productType,
+                                                               @Param("start") LocalDateTime start,
+                                                               @Param("end") LocalDateTime end);
+    
+    /**
+     * Count production events by size for a specific time period
+     */
+    @Query("SELECT p.size, COUNT(p) FROM ProductionData p WHERE p.status = :status AND p.completionTime BETWEEN :start AND :end GROUP BY p.size")
+    List<Object[]> countBySizeAndCompletionTimeBetween(@Param("status") ProductionStatus status,
+                                                        @Param("start") LocalDateTime start,
+                                                        @Param("end") LocalDateTime end);
     
     /**
      * Check if any production data exists for a specific date

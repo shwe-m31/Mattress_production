@@ -48,6 +48,7 @@ public class ProductionSimulationService {
     /**
      * Synchronize production with expected state based on current time
      * This method is idempotent - calling it multiple times produces the same result
+     * Now generates single mattress events (one event = one mattress)
      */
     @Transactional
     public void synchronizeProduction() {
@@ -57,13 +58,9 @@ public class ProductionSimulationService {
         LocalDateTime dayStart = today.atStartOfDay();
         LocalDateTime dayEnd = today.atTime(23, 59, 59);
         
-        // Get current actual production from database
-        List<ProductionData> todayProduction = repository.findByStatusAndCompletionTimeBetween(
+        // Get current actual production count from database (one event = one mattress)
+        long actualProduction = repository.countByStatusAndCompletionTimeBetween(
             ProductionStatus.COMPLETED, dayStart, dayEnd);
-        
-        int actualProduction = todayProduction.stream()
-            .mapToInt(ProductionData::getQuantity)
-            .sum();
         
         // Calculate expected production based on time
         int expectedProduction = timeService.calculateExpectedProduction(now);
@@ -73,8 +70,8 @@ public class ProductionSimulationService {
         
         // Only generate events if we need more production
         if (actualProduction < expectedProduction) {
-            int neededProduction = expectedProduction - actualProduction;
-            generateMissingProductionEvents(today, now, neededProduction, todayProduction);
+            int neededProduction = expectedProduction - (int) actualProduction;
+            generateMissingProductionEvents(today, now, neededProduction);
         }
         
         // If actual exceeds expected (shouldn't happen normally), log warning
@@ -86,9 +83,10 @@ public class ProductionSimulationService {
     
     /**
      * Generate missing production events to reach expected production
+     * Now generates single mattress events (one event = one mattress)
      */
     private void generateMissingProductionEvents(LocalDate date, LocalDateTime currentTime, 
-                                                 int neededQuantity, List<ProductionData> existingEvents) {
+                                                 int neededQuantity) {
         LocalDateTime windowStart = timeService.getProductionWindowStart(date);
         LocalDateTime windowEnd = timeService.getProductionWindowEnd(date);
         
@@ -97,12 +95,11 @@ public class ProductionSimulationService {
             return;
         }
         
-        // Determine the time range for new events
-        LocalDateTime lastEventTime = existingEvents.isEmpty() ? windowStart : 
-            existingEvents.stream()
-                .map(ProductionData::getCompletionTime)
-                .max(LocalDateTime::compareTo)
-                .orElse(windowStart);
+        // Get the latest event time
+        LocalDateTime lastEventTime = repository.findMaxCompletionTimeBetween(windowStart, windowEnd);
+        if (lastEventTime == null) {
+            lastEventTime = windowStart;
+        }
         
         // Ensure last event time is at least window start
         lastEventTime = lastEventTime.isBefore(windowStart) ? windowStart : lastEventTime;
@@ -110,7 +107,7 @@ public class ProductionSimulationService {
         // Don't create events in the future
         LocalDateTime maxEventTime = currentTime.isAfter(windowEnd) ? windowEnd : currentTime;
         
-        // Generate events to fill the gap
+        // Generate events to fill the gap (one event = one mattress)
         int remainingQuantity = neededQuantity;
         LocalDateTime eventTime = lastEventTime;
         
@@ -118,11 +115,11 @@ public class ProductionSimulationService {
         long dateSeed = date.toEpochDay();
         Random dayRandom = new Random(dateSeed);
         
+        // Determine current shift
+        String currentShift = determineCurrentShift(currentTime);
+        
         while (remainingQuantity > 0 && eventTime.isBefore(maxEventTime)) {
-            // Calculate quantity for this event (1-2 units)
-            int eventQuantity = Math.min(remainingQuantity, 1 + dayRandom.nextInt(2));
-            
-            // Advance time by cycle time
+            // Advance time by cycle time (one mattress per event)
             double cycleTime = MIN_CYCLE_TIME + dayRandom.nextDouble() * (MAX_CYCLE_TIME - MIN_CYCLE_TIME);
             eventTime = eventTime.plusMinutes((long) cycleTime);
             
@@ -131,23 +128,40 @@ public class ProductionSimulationService {
                 break;
             }
             
-            // Generate and save the production event
-            ProductionData event = generateDeterministicEvent(eventTime, eventQuantity, dayRandom);
+            // Generate and save the production event (quantity = 1 for single mattress)
+            ProductionData event = generateDeterministicEvent(eventTime, 1, dayRandom, currentShift);
             repository.save(event);
             
-            remainingQuantity -= eventQuantity;
+            remainingQuantity--;
             
-            logger.debug("Generated production event: {} units at {}", eventQuantity, eventTime);
+            logger.debug("Generated production event: 1 mattress at {}", eventTime);
         }
         
-        logger.info("Generated {} production units to reach expected total", neededQuantity - remainingQuantity);
+        logger.info("Generated {} production events to reach expected total", neededQuantity - remainingQuantity);
+    }
+    
+    /**
+     * Determine current shift based on time
+     */
+    private String determineCurrentShift(LocalDateTime dateTime) {
+        LocalTime time = dateTime.toLocalTime();
+        
+        // Simple shift determination (can be enhanced with configuration)
+        if (time.isAfter(LocalTime.of(6, 0)) && time.isBefore(LocalTime.of(14, 0))) {
+            return "Morning Shift";
+        } else if (time.isAfter(LocalTime.of(14, 0)) && time.isBefore(LocalTime.of(22, 0))) {
+            return "Evening Shift";
+        } else {
+            return "Night Shift";
+        }
     }
     
     /**
      * Generate a deterministic production event
      * Uses the random generator to ensure consistent distribution
+     * Now generates single mattress events (quantity = 1)
      */
-    private ProductionData generateDeterministicEvent(LocalDateTime completionTime, int quantity, Random random) {
+    private ProductionData generateDeterministicEvent(LocalDateTime completionTime, int quantity, Random random, String shift) {
         // Determine product type (58% Spring, 42% Hypnos)
         ProductType productType = random.nextDouble() < SPRING_RATIO ? ProductType.SPRING : ProductType.HYPNOS;
         
@@ -175,18 +189,19 @@ public class ProductionSimulationService {
         double cycleTime = MIN_CYCLE_TIME + random.nextDouble() * (MAX_CYCLE_TIME - MIN_CYCLE_TIME);
         LocalDateTime startTime = completionTime.minusMinutes((long) cycleTime);
         
-        // Create the production event
+        // Create the production event (one event = one mattress)
         ProductionData event = new ProductionData(
             productType,
             variety,
             size,
-            quantity,
             productionLine,
             startTime,
             completionTime,
             cycleTime,
             ProductionStatus.COMPLETED,
-            "SIMULATOR"
+            "SIMULATOR",
+            shift,
+            "SIMULATED"
         );
         
         event.setProductionTime(completionTime);
@@ -195,19 +210,15 @@ public class ProductionSimulationService {
     }
     
     /**
-     * Get current production count for today
+     * Get current production count for today (one event = one mattress)
      */
     public int getCurrentProductionCount() {
         LocalDate today = timeService.getCurrentDate();
         LocalDateTime dayStart = today.atStartOfDay();
         LocalDateTime dayEnd = today.atTime(23, 59, 59);
         
-        List<ProductionData> todayProduction = repository.findByStatusAndCompletionTimeBetween(
+        return (int) repository.countByStatusAndCompletionTimeBetween(
             ProductionStatus.COMPLETED, dayStart, dayEnd);
-        
-        return todayProduction.stream()
-            .mapToInt(ProductionData::getQuantity)
-            .sum();
     }
     
     /**

@@ -9,7 +9,9 @@ import java.time.LocalDateTime;
     @Index(name = "idx_status", columnList = "status"),
     @Index(name = "idx_product_type", columnList = "product_type"),
     @Index(name = "idx_production_line", columnList = "production_line"),
-    @Index(name = "idx_status_completion", columnList = "status, completion_time")
+    @Index(name = "idx_status_completion", columnList = "status, completion_time"),
+    @Index(name = "idx_production_date", columnList = "production_date"),
+    @Index(name = "idx_shift", columnList = "shift")
 })
 public class ProductionData {
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -20,8 +22,6 @@ public class ProductionData {
     private String variety;
     @Enumerated(EnumType.STRING) @Column(nullable = false)
     private MattressSize size;
-    @Column(nullable = false)
-    private int quantity;
     @Column(length = 50)
     private String productionLine;
     @Column(nullable = false)
@@ -36,31 +36,45 @@ public class ProductionData {
     private ProductionStatus status;
     @Column(length = 20)
     private String dataSource; // "SIMULATOR" or "REAL" to identify simulated historical data
+    @Column(nullable = false)
+    private LocalDate productionDate;
+    @Column(length = 50)
+    private String shift;
+    @Column(length = 50)
+    private String sourceMode; // "SIMULATED" or "DATA_SOURCE"
 
     public ProductionData() { }
     
-    public ProductionData(ProductType productType, MattressSize size, int quantity, LocalDateTime completionTime) {
-        this.productType = productType; this.size = size; this.quantity = quantity;
-        this.completionTime = completionTime; this.startTime = completionTime;
+    // Constructor for single mattress event (one event = one mattress)
+    public ProductionData(ProductType productType, MattressSize size, LocalDateTime completionTime, String shift, String sourceMode) {
+        this.productType = productType; 
+        this.size = size;
+        this.completionTime = completionTime; 
+        this.startTime = completionTime;
         this.status = ProductionStatus.COMPLETED;
         this.dataSource = "SIMULATOR";
+        this.productionDate = completionTime.toLocalDate();
+        this.shift = shift;
+        this.sourceMode = sourceMode != null ? sourceMode : "SIMULATED";
     }
     
     // Constructor for detailed event creation
-    public ProductionData(ProductType productType, String variety, MattressSize size, int quantity, 
+    public ProductionData(ProductType productType, String variety, MattressSize size, 
                          String productionLine, LocalDateTime startTime, LocalDateTime completionTime, 
-                         Double cycleTime, ProductionStatus status, String dataSource) {
+                         Double cycleTime, ProductionStatus status, String dataSource, String shift, String sourceMode) {
         this.productType = productType;
         this.variety = variety;
         this.size = size;
-        this.quantity = quantity;
         this.productionLine = productionLine;
         this.startTime = startTime;
         this.completionTime = completionTime;
         this.cycleTime = cycleTime;
         this.status = status;
-        this.productionTime = completionTime; // Set productionTime for compatibility
+        this.productionTime = completionTime;
         this.dataSource = dataSource != null ? dataSource : "SIMULATOR";
+        this.productionDate = completionTime.toLocalDate();
+        this.shift = shift;
+        this.sourceMode = sourceMode != null ? sourceMode : "SIMULATED";
     }
     
     public Long getId() { return id; }
@@ -68,7 +82,6 @@ public class ProductionData {
     public String getVariety() { return variety; }
     public void setVariety(String variety) { this.variety = variety; }
     public MattressSize getSize() { return size; }
-    public int getQuantity() { return quantity; }
     public String getProductionLine() { return productionLine; }
     public void setProductionLine(String productionLine) { this.productionLine = productionLine; }
     public LocalDateTime getStartTime() { return startTime; }
@@ -82,4 +95,10 @@ public class ProductionData {
     public void setStatus(ProductionStatus status) { this.status = status; }
     public String getDataSource() { return dataSource; }
     public void setDataSource(String dataSource) { this.dataSource = dataSource; }
+    public LocalDate getProductionDate() { return productionDate; }
+    public void setProductionDate(LocalDate productionDate) { this.productionDate = productionDate; }
+    public String getShift() { return shift; }
+    public void setShift(String shift) { this.shift = shift; }
+    public String getSourceMode() { return sourceMode; }
+    public void setSourceMode(String sourceMode) { this.sourceMode = sourceMode; }
 }

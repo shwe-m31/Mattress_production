@@ -118,6 +118,7 @@ public class HistoricalSeedingService {
     
     /**
      * Generate production events for a single historical day
+     * Now generates single mattress events (one event = one mattress)
      */
     private int generateHistoricalDay(LocalDate date) {
         LocalDateTime windowStart = timeService.getProductionWindowStart(date);
@@ -137,14 +138,14 @@ public class HistoricalSeedingService {
             targetProduction = (int) (targetProduction * 0.7); // 30% less on weekends
         }
         
-        int generatedQuantity = 0;
+        int generatedEvents = 0;
         LocalDateTime currentTime = windowStart;
         
-        // Generate events throughout the production window
-        while (generatedQuantity < targetProduction && currentTime.isBefore(windowEnd)) {
-            // Calculate quantity for this event (1-2 units)
-            int eventQuantity = Math.min(targetProduction - generatedQuantity, 1 + dayRandom.nextInt(2));
-            
+        // Determine shift for historical data
+        String historicalShift = determineHistoricalShift(date);
+        
+        // Generate events throughout the production window (one event = one mattress)
+        while (generatedEvents < targetProduction && currentTime.isBefore(windowEnd)) {
             // Calculate cycle time
             double cycleTime = MIN_CYCLE_TIME + dayRandom.nextDouble() * (MAX_CYCLE_TIME - MIN_CYCLE_TIME);
             
@@ -156,20 +157,36 @@ public class HistoricalSeedingService {
                 break;
             }
             
-            // Generate and save the production event
-            ProductionData event = generateHistoricalEvent(currentTime, eventQuantity, dayRandom);
+            // Generate and save the production event (quantity = 1 for single mattress)
+            ProductionData event = generateHistoricalEvent(currentTime, 1, dayRandom, historicalShift);
             repository.save(event);
             
-            generatedQuantity += eventQuantity;
+            generatedEvents++;
         }
         
-        return generatedQuantity;
+        return generatedEvents;
+    }
+    
+    /**
+     * Determine shift for historical data
+     */
+    private String determineHistoricalShift(LocalDate date) {
+        // Simple determination based on date
+        int dayOfMonth = date.getDayOfMonth();
+        if (dayOfMonth % 3 == 0) {
+            return "Morning Shift";
+        } else if (dayOfMonth % 3 == 1) {
+            return "Evening Shift";
+        } else {
+            return "Night Shift";
+        }
     }
     
     /**
      * Generate a single historical production event
+     * Now generates single mattress events (quantity = 1)
      */
-    private ProductionData generateHistoricalEvent(LocalDateTime completionTime, int quantity, Random random) {
+    private ProductionData generateHistoricalEvent(LocalDateTime completionTime, int quantity, Random random, String shift) {
         // Determine product type (58% Spring, 42% Hypnos)
         ProductType productType = random.nextDouble() < SPRING_RATIO ? ProductType.SPRING : ProductType.HYPNOS;
         
@@ -197,18 +214,19 @@ public class HistoricalSeedingService {
         double cycleTime = MIN_CYCLE_TIME + random.nextDouble() * (MAX_CYCLE_TIME - MIN_CYCLE_TIME);
         LocalDateTime startTime = completionTime.minusMinutes((long) cycleTime);
         
-        // Create the production event
+        // Create the production event (one event = one mattress)
         ProductionData event = new ProductionData(
             productType,
             variety,
             size,
-            quantity,
             productionLine,
             startTime,
             completionTime,
             cycleTime,
             ProductionStatus.COMPLETED,
-            "SIMULATOR" // Mark as simulated historical data
+            "SIMULATOR",
+            shift,
+            "SIMULATED"
         );
         
         event.setProductionTime(completionTime);

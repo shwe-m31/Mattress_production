@@ -78,10 +78,11 @@ public class ProductionController {
             // Only include hours that have already passed
             if (hourIndex <= currentHour && hourIndex >= 0 && hourIndex < 24) {
                 boolean isSpring = item.getProductType().name().equals("SPRING");
+                // One event = one mattress, so we increment by 1
                 if (isSpring) {
-                    hourly.getSpring()[hourIndex] += item.getQuantity();
+                    hourly.getSpring()[hourIndex]++;
                 } else {
-                    hourly.getHypnos()[hourIndex] += item.getQuantity();
+                    hourly.getHypnos()[hourIndex]++;
                 }
             }
         }
@@ -111,18 +112,18 @@ public class ProductionController {
             int king = 0, queen = 0, doubleSize = 0, single = 0;
             
             for (ProductionData item : dayData) {
-                int quantity = item.getQuantity();
+                // One event = one mattress, so we count events, not quantity
                 if (item.getProductType().name().equals("SPRING")) {
-                    spring += quantity;
+                    spring++;
                 } else {
-                    hypnos += quantity;
+                    hypnos++;
                 }
                 
                 switch (item.getSize().name()) {
-                    case "KING": king += quantity; break;
-                    case "QUEEN": queen += quantity; break;
-                    case "DOUBLE": doubleSize += quantity; break;
-                    case "SINGLE": single += quantity; break;
+                    case "KING": king++; break;
+                    case "QUEEN": queen++; break;
+                    case "DOUBLE": doubleSize++; break;
+                    case "SINGLE": single++; break;
                 }
             }
             
@@ -165,10 +166,11 @@ public class ProductionController {
             
             int spring = 0, hypnos = 0;
             for (ProductionData item : weekData) {
+                // One event = one mattress, so we count events, not quantity
                 if (item.getProductType().name().equals("SPRING")) {
-                    spring += item.getQuantity();
+                    spring++;
                 } else {
-                    hypnos += item.getQuantity();
+                    hypnos++;
                 }
             }
             
@@ -207,18 +209,18 @@ public class ProductionController {
             int king = 0, queen = 0, doubleSize = 0, single = 0;
             
             for (ProductionData item : monthData) {
-                int quantity = item.getQuantity();
+                // One event = one mattress, so we count events, not quantity
                 if (item.getProductType().name().equals("SPRING")) {
-                    spring += quantity;
+                    spring++;
                 } else {
-                    hypnos += quantity;
+                    hypnos++;
                 }
                 
                 switch (item.getSize().name()) {
-                    case "KING": king += quantity; break;
-                    case "QUEEN": queen += quantity; break;
-                    case "DOUBLE": doubleSize += quantity; break;
-                    case "SINGLE": single += quantity; break;
+                    case "KING": king++; break;
+                    case "QUEEN": queen++; break;
+                    case "DOUBLE": doubleSize++; break;
+                    case "SINGLE": single++; break;
                 }
             }
             
@@ -249,10 +251,9 @@ public class ProductionController {
                 item.getVariety() != null ? item.getVariety() : "Standard",
                 item.getSize().name(),
                 item.getCompletionTime(),
-                item.getQuantity(),
-                item.getCycleTime() != null ? item.getCycleTime() : 0.0,
                 item.getProductionLine() != null ? item.getProductionLine() : "Line 1",
-                item.getStatus().name()
+                item.getStatus().name(),
+                item.getShift() != null ? item.getShift() : "Unknown"
             ))
             .toList());
     }

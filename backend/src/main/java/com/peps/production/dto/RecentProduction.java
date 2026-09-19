@@ -7,23 +7,21 @@ public class RecentProduction {
     private String variety;
     private String size;
     private LocalDateTime completionTime;
-    private int quantity;
-    private double cycleTime;
     private String productionLine;
     private String status;
+    private String shift;
     
     public RecentProduction() {}
     
     public RecentProduction(String productType, String variety, String size, LocalDateTime completionTime, 
-                          int quantity, double cycleTime, String productionLine, String status) {
+                          String productionLine, String status, String shift) {
         this.productType = productType;
         this.variety = variety;
         this.size = size;
         this.completionTime = completionTime;
-        this.quantity = quantity;
-        this.cycleTime = cycleTime;
         this.productionLine = productionLine;
         this.status = status;
+        this.shift = shift;
     }
     
     public String getProductType() { return productType; }
@@ -38,15 +36,12 @@ public class RecentProduction {
     public LocalDateTime getCompletionTime() { return completionTime; }
     public void setCompletionTime(LocalDateTime completionTime) { this.completionTime = completionTime; }
     
-    public int getQuantity() { return quantity; }
-    public void setQuantity(int quantity) { this.quantity = quantity; }
-    
-    public double getCycleTime() { return cycleTime; }
-    public void setCycleTime(double cycleTime) { this.cycleTime = cycleTime; }
-    
     public String getProductionLine() { return productionLine; }
     public void setProductionLine(String productionLine) { this.productionLine = productionLine; }
     
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
+    
+    public String getShift() { return shift; }
+    public void setShift(String shift) { this.shift = shift; }
 }
